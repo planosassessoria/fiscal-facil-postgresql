@@ -1,5 +1,25 @@
--- This file contains the SQL query for inserting a new user into the account.users table.
--- The query takes the email, email confirmation status, full name, display name, gender ID, birth date, CPF, telefone, password, acceptance of terms, and root status as parameters to create a new user record in the database.
+-- ============================================================================
+-- Arquivo: insert-user-root.sql
+-- Operação: INSERT
+-- Schema/Tabela: account.users
+-- Descrição: Insere um novo usuário com permissão root (administrador geral).
+--            Usuários root possuem acesso irrestrito a todo o sistema.
+--
+-- Parâmetros:
+--   $1  - email (VARCHAR) - E-mail do usuário
+--   $2  - email_confirmed (BOOLEAN) - Status de confirmação do e-mail
+--   $3  - full_name (VARCHAR) - Nome completo
+--   $4  - display_name (VARCHAR) - Nome de exibição
+--   $5  - gender_id (INT) - ID do gênero
+--   $6  - birth_date (DATE) - Data de nascimento
+--   $7  - cpf (VARCHAR) - CPF do usuário
+--   $8  - telefone (VARCHAR) - Número de telefone
+--   $9  - password (VARCHAR) - Senha criptografada
+--   $10 - accept_terms (BOOLEAN) - Aceite dos termos de uso
+--   $11 - root (BOOLEAN) - Flag de administrador root
+--
+-- Retorno: Nenhum
+-- ============================================================================
 INSERT INTO account.users (
 	email,
 	email_confirmed,

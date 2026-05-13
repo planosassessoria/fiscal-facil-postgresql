@@ -1,5 +1,14 @@
--- This file contains the SQL query for selecting all CNAEs from the database.
--- It retrieves the CNAE code, its description, and the total number of rows in the result set from the partner.cnaes table, ordered by the CNAE code in ascending order.
+-- ============================================================================
+-- Arquivo: select-all-cnaes.sql
+-- Operação: SELECT
+-- Schema/Tabela: partner.cnaes
+-- Descrição: Lista todos os códigos CNAE cadastrados no sistema.
+--            Usado para popular selects e autocompletes no frontend.
+--
+-- Parâmetros: Nenhum
+--
+-- Retorno: cnae, cnae_description, rows_number
+-- ============================================================================
 SELECT
     cnae,
     cnae_description,

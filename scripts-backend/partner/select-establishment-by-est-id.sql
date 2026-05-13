@@ -1,5 +1,15 @@
--- Busca um estabelecimento pelo ID, incluindo dados de endereço.
--- Usado para obter os dados completos de um establishment para atualização ou sincronização.
+-- ============================================================================
+-- Arquivo: select-establishment-by-est-id.sql
+-- Operação: SELECT
+-- Schema/Tabela: partner.establishments + partner.addresses + partner.tenants
+-- Descrição: Busca um estabelecimento pelo ID com dados completos de
+--            endereço e vínculo com tenant. Usado para edição e sincronização.
+--
+-- Parâmetros:
+--   $1 - est_id (UUID) - ID do estabelecimento
+--
+-- Retorno: Dados completos do estabelecimento, endereço e tenant (LIMIT 1)
+-- ============================================================================
 SELECT
     e.est_id,
     e.document,

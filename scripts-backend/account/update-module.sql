@@ -1,5 +1,17 @@
--- This file contains the SQL query for updating a module in the account.modules table. The query updates the module information, including the module name, module key, and description based on the provided module ID. The module ID is used as a condition in the WHERE clause to ensure that only the specified module is updated. The query does not return any results, as it is an UPDATE statement.
--- This query is used in the account package to update a module's information in the database.
+-- ============================================================================
+-- Arquivo: update-module.sql
+-- Operação: UPDATE
+-- Schema/Tabela: account.modules
+-- Descrição: Atualiza os dados de um módulo do sistema de controle de acesso.
+--
+-- Parâmetros:
+--   $1 - module_id (UUID) - ID do módulo a ser atualizado
+--   $2 - module_name (VARCHAR) - Novo nome do módulo
+--   $3 - module_key (VARCHAR) - Nova chave do módulo
+--   $4 - description (TEXT) - Nova descrição
+--
+-- Retorno: Nenhum
+-- ============================================================================
 UPDATE
 	account.modules
 SET

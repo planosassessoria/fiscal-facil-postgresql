@@ -1,5 +1,16 @@
--- This is the SQL query for selecting a user session from the database using a refresh token.
--- It is used in the account package to retrieve session information for a user based on their refresh token.
+-- ============================================================================
+-- Arquivo: select-session-by-token.sql
+-- Operação: SELECT
+-- Schema/Tabela: account.users_sessions
+-- Descrição: Busca uma sessão de usuário pelo refresh_token.
+--            Usado na validação e renovação de tokens JWT.
+--
+-- Parâmetros:
+--   $1 - refresh_token (VARCHAR) - Token de atualização da sessão
+--
+-- Retorno: session_id, email, ip_address, country, region, city,
+--          latitude, longitude, created_at
+-- ============================================================================
 SELECT
 	session_id,
 	email,

@@ -1,5 +1,22 @@
--- This file contains the SQL query for updating a user's profile in the account.users table.
--- This query is used in the account package to update a user's profile information in the database.
+-- ============================================================================
+-- Arquivo: update-user-profile.sql
+-- Operação: UPDATE
+-- Schema/Tabela: account.users
+-- Descrição: Atualiza os dados do perfil do usuário (nome, gênero, avatar,
+--            telefone, etc). Retorna o registro atualizado.
+--
+-- Parâmetros:
+--   $1 - email (VARCHAR) - E-mail do usuário (identifica o registro)
+--   $2 - full_name (VARCHAR) - Nome completo
+--   $3 - display_name (VARCHAR) - Nome de exibição
+--   $4 - gender_id (INT) - ID do gênero
+--   $5 - birth_date (DATE) - Data de nascimento
+--   $6 - avatar (VARCHAR) - URL do avatar
+--   $7 - cpf (VARCHAR) - CPF do usuário
+--   $8 - telefone (VARCHAR) - Número de telefone
+--
+-- Retorno: Registro completo do usuário atualizado (RETURNING *)
+-- ============================================================================
 UPDATE account.users
 SET
 	full_name = $2,

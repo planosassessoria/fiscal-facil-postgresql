@@ -1,5 +1,24 @@
--- This file contains the SQL query for selecting users by tenant ID from the database.
--- It retrieves the tenant ID, email, full name, display name, root status, role ID, role name, account type, is owner, email confirmation status, active status, change password status, created at timestamp, and the total number of rows in the result set from the account.users.
+-- ============================================================================
+-- Arquivo: select-users-by-tenant-id.sql
+-- Operação: SELECT
+-- Schema/Tabela: account.users + account.users_tenants + account.roles
+-- Descrição: Lista usuários vinculados a um tenant com suporte a:
+--            - Controle RBAC (root vê todos, demais vêem só seu tenant)
+--            - Busca textual via Full Text Search (FTS)
+--            - Paginação dinâmica (LIMIT/OFFSET)
+--            - Ordenação dinâmica (via %I %s)
+--
+-- Parâmetros:
+--   $1 - is_root (BOOLEAN) - Se o usuário requisitante é root
+--   $2 - tenant_id (UUID) - ID do tenant para filtro de segurança
+--   $3 - search_query (TEXT) - Termo de busca FTS (NULL = sem filtro)
+--   %I - Coluna de ordenação (interpolado via pg_format)
+--   %s - Direção da ordenação ASC/DESC (interpolado via pg_format)
+--   %L - LIMIT (interpolado via pg_format)
+--   %L - OFFSET (interpolado via pg_format)
+--
+-- Retorno: Lista de usuários com tenant_id, role, status e rows_number
+-- ============================================================================
 SELECT
   ut.tenant_id,
   u.email,

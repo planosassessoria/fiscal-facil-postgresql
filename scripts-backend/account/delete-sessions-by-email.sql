@@ -1,5 +1,15 @@
--- This is the SQL query for deleting all user sessions associated with a specific email address.
--- It is used in the account package to log out a user from all devices by removing all their sessions.
+-- ============================================================================
+-- Arquivo: delete-sessions-by-email.sql
+-- Operação: DELETE
+-- Schema/Tabela: account.users_sessions
+-- Descrição: Remove todas as sessões de um usuário (logout de todos os
+--            dispositivos). Usado para forçar re-autenticação global.
+--
+-- Parâmetros:
+--   $1 - email (VARCHAR) - E-mail do usuário
+--
+-- Retorno: Nenhum
+-- ============================================================================
 DELETE
 FROM account.users_sessions
 WHERE email = $1;

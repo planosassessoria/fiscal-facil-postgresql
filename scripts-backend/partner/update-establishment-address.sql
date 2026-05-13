@@ -1,5 +1,24 @@
--- This file contains the SQL query for updating an existing establishment's address in the partner.addresses table.
--- It is used to update the details of an establishment's address with the provided information such as establishment ID, zip code, street, street number, neighborhood, city, IBGE code, state (UF), and complement. The COALESCE function is used to ensure that only the provided fields are updated, while the existing values are retained for any fields that are not provided (i.e., those that are NULL). The query identifies the address to update using the est_id, which is a foreign key linking the address to the establishment. The address_id is not updated here as it is a primary key and should remain unchanged.
+-- ============================================================================
+-- Arquivo: update-establishment-address.sql
+-- Operação: UPDATE
+-- Schema/Tabela: partner.addresses
+-- Descrição: Atualiza parcialmente o endereço de um estabelecimento.
+--            Usa COALESCE para preservar valores existentes quando o
+--            parâmetro é NULL (patch parcial).
+--
+-- Parâmetros:
+--   $1 - est_id (UUID) - ID do estabelecimento (identifica o endereço)
+--   $2 - zip_code (VARCHAR) - CEP (opcional)
+--   $3 - street (VARCHAR) - Logradouro (opcional)
+--   $4 - street_number (VARCHAR) - Número (opcional)
+--   $5 - neighborhood (VARCHAR) - Bairro (opcional)
+--   $6 - city (VARCHAR) - Cidade (opcional)
+--   $7 - ibge (VARCHAR) - Código IBGE (opcional)
+--   $8 - uf (VARCHAR) - UF (opcional)
+--   $9 - complement (VARCHAR) - Complemento (opcional)
+--
+-- Retorno: Nenhum
+-- ============================================================================
 UPDATE partner.addresses
 SET
     zip_code = COALESCE($2, zip_code),

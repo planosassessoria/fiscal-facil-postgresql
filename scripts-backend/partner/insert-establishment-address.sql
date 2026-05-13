@@ -1,5 +1,23 @@
--- This file contains the SQL query for inserting a new establishment address into the partner.addresses table.
--- It is used to create a new address for an establishment with the provided details such as establishment ID, zip code, street, street number, neighborhood, city, IBGE code, state (UF), and complement.
+-- ============================================================================
+-- Arquivo: insert-establishment-address.sql
+-- Operação: INSERT
+-- Schema/Tabela: partner.addresses
+-- Descrição: Insere o endereço de um estabelecimento.
+--            Cada estabelecimento possui um único endereço vinculado.
+--
+-- Parâmetros:
+--   $1 - est_id (UUID) - ID do estabelecimento
+--   $2 - zip_code (VARCHAR) - CEP
+--   $3 - street (VARCHAR) - Logradouro
+--   $4 - street_number (VARCHAR) - Número
+--   $5 - neighborhood (VARCHAR) - Bairro
+--   $6 - city (VARCHAR) - Cidade
+--   $7 - ibge (VARCHAR) - Código IBGE do município
+--   $8 - uf (VARCHAR) - UF (sigla)
+--   $9 - complement (VARCHAR) - Complemento
+--
+-- Retorno: Registro completo do endereço criado (RETURNING *)
+-- ============================================================================
 INSERT INTO partner.addresses (
 	est_id,
 	zip_code,

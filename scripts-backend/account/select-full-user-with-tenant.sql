@@ -1,5 +1,17 @@
--- This is the SQL query for selecting a full user profile along with tenant and establishment information based on the user's email.
--- It retrieves user details such as email, full name, display name, gender, birth date, avatar, CPF, phone number, role information, tenant information, and associated establishment details.
+-- ============================================================================
+-- Arquivo: select-full-user-with-tenant.sql
+-- Operação: SELECT
+-- Schema/Tabela: account.users + account.users_tenants + account.roles +
+--               partner.tenants + partner.establishments
+-- Descrição: Retorna o perfil completo do usuário com dados de tenant,
+--            perfil de acesso e estabelecimento vinculado. Usado após
+--            autenticação para montar o contexto do usuário logado.
+--
+-- Parâmetros:
+--   $1 - email (VARCHAR) - E-mail do usuário
+--
+-- Retorno: Dados do usuário, gênero, tenant, role e estabelecimento
+-- ============================================================================
 SELECT
 	u.email,
 	u.email_confirmed,
@@ -19,6 +31,7 @@ SELECT
 	r.account_type,
 	r.is_owner,
 	r.modules,
+	r.permissions,
 	ut.tenant_id,
 	ut.is_active,
 	t.est_id,
