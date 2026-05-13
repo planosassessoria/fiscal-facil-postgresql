@@ -1,5 +1,16 @@
--- This file contains the SQL query for selecting all permissions from the account.permissions table. It retrieves the permission information, including the permission ID, module ID, module name, module key, permission name, permission key, description, creation date, and update date. Additionally, it includes a count of the total number of rows returned by the query using the COUNT(*) OVER() window function.
--- The query joins the account.permissions table with the account.modules table using the module_id to retrieve the module name and module key associated with each permission. The results are ordered by the permission_id by default, but this can be modified as needed.
+-- ============================================================================
+-- Arquivo: select-permissions.sql
+-- Operação: SELECT
+-- Schema/Tabela: account.permissions + account.modules
+-- Descrição: Lista todas as permissões do sistema com os dados do módulo
+--            associado. Inclui contagem total de registros.
+--
+-- Parâmetros: Nenhum
+--
+-- Retorno: permission_id, module_id, module_name, module_key,
+--          permission_name, permission_key, description,
+--          created_at, updated_at, rows_number
+-- ============================================================================
 SELECT
 	p.permission_id,
 	p.module_id,

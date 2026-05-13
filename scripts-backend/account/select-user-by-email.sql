@@ -1,5 +1,15 @@
--- This file contains the SQL query for selecting a user from the database by their email address.
--- It is used in the account package to retrieve user information based on their email, including their tenant and role associations.
+-- ============================================================================
+-- Arquivo: select-user-by-email.sql
+-- Operação: SELECT
+-- Schema/Tabela: account.users + account.users_tenants
+-- Descrição: Busca um usuário pelo e-mail, incluindo vínculo com tenant
+--            e perfil de acesso. Usado no processo de autenticação.
+--
+-- Parâmetros:
+--   $1 - email (VARCHAR) - E-mail do usuário
+--
+-- Retorno: Dados do usuário com tenant_id e role_id (LIMIT 1)
+-- ============================================================================
 SELECT
 	u.email,
 	u.full_name,

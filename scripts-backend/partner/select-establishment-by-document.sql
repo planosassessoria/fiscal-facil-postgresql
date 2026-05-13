@@ -1,6 +1,20 @@
--- Busca um estabelecimento pela chave de negócio (documento + IE),
--- diretamente na tabela establishments (sem verificar se é tenant).
--- Usado para reaproveitar um establishment que já existe globalmente.
+-- ============================================================================
+-- Arquivo: select-establishment-by-document.sql
+-- Operação: SELECT
+-- Schema/Tabela: partner.establishments
+-- Descrição: Busca um estabelecimento pela chave de negócio (documento + IE).
+--            Regras de unicidade:
+--            - PJ (CNPJ): apenas pelo documento
+--            - PF com IE: CPF + IE
+--            - PF autônomo: CPF onde IE é nula
+--
+-- Parâmetros:
+--   $1 - document (VARCHAR) - CNPJ ou CPF sem formatação
+--   $2 - ie (TEXT) - Inscrição Estadual (pode ser NULL)
+--
+-- Retorno: est_id, document, document_type, ie, uf, razao_social,
+--          fantasia, situacao (LIMIT 1)
+-- ============================================================================
 SELECT
     est_id,
     document,

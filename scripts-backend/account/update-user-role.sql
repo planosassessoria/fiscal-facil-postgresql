@@ -1,5 +1,21 @@
--- This file contains the SQL query for updating a user role in the account.roles table. The query updates the role information, including the role name, account type, owner flag, modules, permissions, and system status based on the provided role ID.
--- This query is used in the account package to update a user role's information in the database. It allows for modifying the role's attributes while keeping the role ID unchanged.
+-- ============================================================================
+-- Arquivo: update-user-role.sql
+-- Operação: UPDATE
+-- Schema/Tabela: account.roles
+-- Descrição: Atualiza os dados de um perfil de acesso (role), incluindo
+--            módulos, permissões e flags de sistema.
+--
+-- Parâmetros:
+--   $1 - role_id (UUID) - ID do perfil a ser atualizado
+--   $2 - role_name (VARCHAR) - Novo nome do perfil
+--   $3 - account_type (VARCHAR) - Tipo da conta
+--   $4 - is_owner (BOOLEAN) - Flag de proprietário
+--   $5 - modules (JSONB) - Lista de módulos atribuídos
+--   $6 - permissions (JSONB) - Lista de permissões atribuídas
+--   $7 - is_system (BOOLEAN) - Flag de perfil de sistema
+--
+-- Retorno: Nenhum
+-- ============================================================================
 UPDATE
 	account.roles
 SET

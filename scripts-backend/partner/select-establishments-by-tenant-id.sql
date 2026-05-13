@@ -1,5 +1,18 @@
--- This file contains the SQL query for selecting establishments by tenant ID from the database.
--- It retrieves the establishment ID, document, social reason, display name, fantasy name, phone, email, state, situation, tenant ID, and whether the establishment has a tenant.
+-- ============================================================================
+-- Arquivo: select-establishments-by-tenant-id.sql
+-- Operação: SELECT
+-- Schema/Tabela: partner.establishments + partner.tenants + partner.tax_entities
+-- Descrição: Lista estabelecimentos vinculados a um tenant com controle RBAC.
+--            ROOT visualiza todos; demais veem apenas sua carteira ativa.
+--            Identifica se cada estabelecimento já é contratante (has_tenant).
+--
+-- Parâmetros:
+--   $1 - tenant_id (UUID) - ID do tenant atual (para filtro tax_entities)
+--   $2 - is_root (BOOLEAN) - Se o usuário é root
+--
+-- Retorno: est_id, document, razao_social, display_name, fantasia,
+--          telefone, email, uf, situacao, tenant_id, has_tenant, rows_number
+-- ============================================================================
 SELECT
     e.est_id,
     e.document,

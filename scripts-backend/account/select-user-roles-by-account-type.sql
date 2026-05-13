@@ -1,5 +1,16 @@
--- This file contains the SQL query for selecting user roles by account type.
--- It is used to retrieve the role information for a specific account type, allowing for the differentiation between ROOT and non-ROOT roles. The query filters roles based on the provided account type and includes a condition to show owner roles only to ROOT accounts. The result includes the role ID, role name, account type, system flag, modules, and permissions, ordered by role name.
+-- ============================================================================
+-- Arquivo: select-user-roles-by-account-type.sql
+-- Operação: SELECT
+-- Schema/Tabela: account.roles
+-- Descrição: Lista perfis de acesso filtrados por tipo de conta.
+--            ROOT visualiza todos os perfis; demais contas veem apenas
+--            os perfis do seu tipo, excluindo perfis owner.
+--
+-- Parâmetros:
+--   $1 - account_type (VARCHAR) - Tipo da conta (ROOT, COUNTER, CLIENT)
+--
+-- Retorno: role_id, role_name, account_type, is_system, modules, permissions
+-- ============================================================================
 SELECT
     role_id,
     role_name,

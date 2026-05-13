@@ -1,5 +1,15 @@
--- This file contains the SQL query for selecting a user role by account type and owner flag.
--- It is used to retrieve the role information for the owner role, which is a system-defined role with specific permissions.
+-- ============================================================================
+-- Arquivo: select-user-role-owner.sql
+-- Operação: SELECT
+-- Schema/Tabela: account.roles
+-- Descrição: Busca o perfil de proprietário (owner) de um tipo de conta.
+--            Perfis owner são roles de sistema com permissões completas.
+--
+-- Parâmetros:
+--   $1 - account_type (VARCHAR) - Tipo da conta (COUNTER, CLIENT)
+--
+-- Retorno: role_id, role_name, account_type, is_owner, is_system (LIMIT 1)
+-- ============================================================================
 SELECT
 	role_id,
 	role_name,

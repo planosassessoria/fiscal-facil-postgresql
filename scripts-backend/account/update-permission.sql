@@ -1,5 +1,18 @@
--- This file contains the SQL query for updating a permission in the account.permissions table. The query updates the permission information, including the module ID, permission name, permission key, and description based on the provided permission ID. The permission ID is used as a condition in the WHERE clause to ensure that only the specified permission is updated. The query does not return any results, as it is an UPDATE statement.
--- This query is used in the account package to update a permission's information in the database.
+-- ============================================================================
+-- Arquivo: update-permission.sql
+-- Operação: UPDATE
+-- Schema/Tabela: account.permissions
+-- Descrição: Atualiza os dados de uma permissão no sistema de controle de acesso.
+--
+-- Parâmetros:
+--   $1 - permission_id (UUID) - ID da permissão a ser atualizada
+--   $2 - module_id (UUID) - ID do módulo associado
+--   $3 - permission_name (VARCHAR) - Novo nome da permissão
+--   $4 - permission_key (VARCHAR) - Nova chave da permissão
+--   $5 - description (TEXT) - Nova descrição
+--
+-- Retorno: Nenhum
+-- ============================================================================
 UPDATE
 	account.permissions
 SET

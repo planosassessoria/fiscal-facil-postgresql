@@ -1,5 +1,5 @@
 -- =============================================================================
--- FUNCTION: xml.validate_and_store_xml
+-- FUNCTION: xml.fn_validate_and_store_xml
 -- SCHEMA:   xml
 -- DESCRIPTION:
 --   Validates a NF-e / NFC-e XML document and stores it in xml.xml_storage
@@ -34,9 +34,9 @@
 --   invalid_ch_nf       BOOLEAN  — ch_nf is NULL or not 44 digits.
 -- =============================================================================
 
--- DROP FUNCTION IF EXISTS xml.validate_and_store_xml(UUID, UUID, XML);
+-- DROP FUNCTION IF EXISTS xml.fn_validate_and_store_xml(UUID, UUID, XML);
 
-CREATE OR REPLACE FUNCTION xml.validate_and_store_xml(
+CREATE OR REPLACE FUNCTION xml.fn_validate_and_store_xml(
     _est_id        UUID,
     _import_job_id UUID DEFAULT NULL,
     _xml_content   XML  DEFAULT NULL
@@ -205,9 +205,9 @@ BEGIN
 END;
 $$;
 
-ALTER FUNCTION xml.validate_and_store_xml(UUID, UUID, XML) OWNER TO dorcilio;
+ALTER FUNCTION xml.fn_validate_and_store_xml(UUID, UUID, XML) OWNER TO dorcilio;
 
-COMMENT ON FUNCTION xml.validate_and_store_xml(UUID, UUID, XML) IS
+COMMENT ON FUNCTION xml.fn_validate_and_store_xml(UUID, UUID, XML) IS
     'Validates and stores a NF-e/NFC-e XML document in xml.xml_storage. '
     'Validations: ch_nf integrity (44 digits), NF model (55/65), duplicate import '
     '(returns existing xml_id and ch_nf), and participant match via est_id against '
@@ -215,7 +215,7 @@ COMMENT ON FUNCTION xml.validate_and_store_xml(UUID, UUID, XML) IS
     'or inserted=false with a detailed error flags object on failure.';
 
 
-SELECT xml.validate_and_store_xml(
+SELECT xml.fn_validate_and_store_xml(
 	<_est_id uuid>,
 	<_import_job_id uuid>,
 	<_xml_content xml>

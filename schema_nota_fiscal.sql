@@ -186,22 +186,55 @@ CREATE TRIGGER tr_upd_b01_ide
 -- =============================================================================
 
 -- Referências a outras NF-e / CT-e
-CREATE TABLE nota_fiscal.b12a_nf_ref (
-    ch_nf               VARCHAR(44)             NOT NULL,
-    ref_nfe             VARCHAR(44),
-    ref_cte             VARCHAR(44),
-
-    CONSTRAINT b12a_nf_ref_pkey PRIMARY KEY (ch_nf),
-    CONSTRAINT fk_b12a_nf_ref_b01_ide FOREIGN KEY (ch_nf)
+CREATE TABLE nota_fiscal.ba01_nf_ref (
+    id_nf_ref   BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    ch_nf       VARCHAR(44) NOT NULL, -- FK para b01_ide
+    ref_nfe     VARCHAR(44),          -- Chave de acesso da NF-e referenciada
+    ref_cte     VARCHAR(44),          -- Chave de acesso do CT-e referenciado
+    c_uf         VARCHAR(2),           -- Código da UF do emitente
+    aamm        VARCHAR(4),           -- Ano e mês de emissão
+    cnpj        VARCHAR(14),          -- CNPJ do emitente
+    cpf         VARCHAR(11),          -- CPF do emitente
+    ie          VARCHAR(14),          -- IE do emitente
+    mod         VARCHAR(2),           -- Modelo do documento fiscal
+    serie       VARCHAR(3),           -- Série do documento fiscal
+    n_nf         VARCHAR(9),           -- Número do documento fiscal
+    n_ecf        VARCHAR(3),           -- Número de ordem sequencial do ECF
+    n_coo        VARCHAR(6),           -- Número do Contador de Ordem de Operação
+    CONSTRAINT fk_ba01_nf_ref_b01_ide FOREIGN KEY (ch_nf)
         REFERENCES nota_fiscal.b01_ide (ch_nf)
         ON DELETE CASCADE
 );
 
-ALTER TABLE nota_fiscal.b12a_nf_ref OWNER TO dorcilio;
-COMMENT ON TABLE nota_fiscal.b12a_nf_ref IS 'Referências a documentos fiscais relacionados (NF-e ou CT-e). Grupo B12a do leiaute NF-e.';
-COMMENT ON COLUMN nota_fiscal.b12a_nf_ref.ch_nf    IS 'Chave de acesso da NF-e emissora desta referência.';
-COMMENT ON COLUMN nota_fiscal.b12a_nf_ref.ref_nfe  IS 'Chave de acesso da NF-e referenciada.';
-COMMENT ON COLUMN nota_fiscal.b12a_nf_ref.ref_cte  IS 'Chave de acesso do CT-e referenciado.';
+ALTER TABLE nota_fiscal.ba01_nf_ref OWNER TO dorcilio;
+
+COMMENT ON TABLE nota_fiscal.ba01_nf_ref IS 'Referências a documentos fiscais relacionados (NF-e, CT-e, NF modelo 1/1A, produtor, ECF, etc). Grupo BA01 do leiaute NF-e.';
+COMMENT ON COLUMN nota_fiscal.ba01_nf_ref.id_nf_ref IS 'Chave surrogate para múltiplas referências por NF-e.';
+COMMENT ON COLUMN nota_fiscal.ba01_nf_ref.ch_nf IS 'Chave de acesso da NF-e principal (emissora).';
+COMMENT ON COLUMN nota_fiscal.ba01_nf_ref.ref_nfe IS 'Chave de acesso da NF-e/NFC-e referenciada (modelo 55 ou 65, tag <refNFe>).';
+COMMENT ON COLUMN nota_fiscal.ba01_nf_ref.ref_cte IS 'Chave de acesso do CT-e referenciado (tag <refCTe>).';
+COMMENT ON COLUMN nota_fiscal.ba01_nf_ref.c_uf IS 'Código da UF do emitente da referência (tag <cUF> em <refNF>, <refNFP>, <refECF>).';
+COMMENT ON COLUMN nota_fiscal.ba01_nf_ref.aamm IS 'Ano e mês de emissão da referência (AAMM, tag <AAMM> em <refNF>, <refNFP>, <refECF>).';
+COMMENT ON COLUMN nota_fiscal.ba01_nf_ref.cnpj IS 'CNPJ do emitente da referência (tag <CNPJ> em <refNF>, <refNFP>).';
+COMMENT ON COLUMN nota_fiscal.ba01_nf_ref.cpf IS 'CPF do emitente da referência (tag <CPF> em <refNFP>).';
+COMMENT ON COLUMN nota_fiscal.ba01_nf_ref.ie IS 'IE do emitente da referência (tag <IE> em <refNFP>).';
+COMMENT ON COLUMN nota_fiscal.ba01_nf_ref.mod IS 'Modelo do documento fiscal referenciado (tag <mod> em <refNF>, <refNFP>, <refECF>).';
+COMMENT ON COLUMN nota_fiscal.ba01_nf_ref.serie IS 'Série do documento fiscal referenciado (tag <serie> em <refNF>, <refNFP>).';
+COMMENT ON COLUMN nota_fiscal.ba01_nf_ref.n_nf IS 'Número do documento fiscal referenciado (tag <nNF> em <refNF>, <refNFP>).';
+COMMENT ON COLUMN nota_fiscal.ba01_nf_ref.n_ecf IS 'Número de ordem sequencial do ECF (tag <nECF> em <refECF>).';
+COMMENT ON COLUMN nota_fiscal.ba01_nf_ref.n_coo IS 'Número do Contador de Ordem de Operação (COO, tag <nCOO> em <refECF>).';
+
+-- Índices para performance e busca
+CREATE INDEX idx_ba01_nf_ref_ch_nf    ON nota_fiscal.ba01_nf_ref (ch_nf);
+CREATE INDEX idx_ba01_nf_ref_ref_nfe  ON nota_fiscal.ba01_nf_ref (ref_nfe);
+CREATE INDEX idx_ba01_nf_ref_ref_cte  ON nota_fiscal.ba01_nf_ref (ref_cte);
+CREATE INDEX idx_ba01_nf_ref_c_uf     ON nota_fiscal.ba01_nf_ref (c_uf);
+CREATE INDEX idx_ba01_nf_ref_cnpj     ON nota_fiscal.ba01_nf_ref (cnpj);
+CREATE INDEX idx_ba01_nf_ref_cpf      ON nota_fiscal.ba01_nf_ref (cpf);
+CREATE INDEX idx_ba01_nf_ref_mod      ON nota_fiscal.ba01_nf_ref (mod);
+CREATE INDEX idx_ba01_nf_ref_n_nf     ON nota_fiscal.ba01_nf_ref (n_nf);
+CREATE INDEX idx_ba01_nf_ref_n_ecf    ON nota_fiscal.ba01_nf_ref (n_ecf);
+CREATE INDEX idx_ba01_nf_ref_n_coo    ON nota_fiscal.ba01_nf_ref (n_coo);
 
 -- Emitente e endereço
 CREATE TABLE nota_fiscal.c01_emit_c05_ender (

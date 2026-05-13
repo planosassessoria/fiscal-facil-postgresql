@@ -1,5 +1,17 @@
--- This file contains the SQL query for updating a user's password and optionally setting the accept_terms flag.
--- The query updates the password for the user with the given email and sets change_password to FALSE after the password is changed.
+-- ============================================================================
+-- Arquivo: update-user-password.sql
+-- Operação: UPDATE
+-- Schema/Tabela: account.users
+-- Descrição: Atualiza a senha do usuário e marca change_password como FALSE.
+--            Opcionalmente atualiza accept_terms se ainda não foi aceito.
+--
+-- Parâmetros:
+--   $1 - email (VARCHAR) - E-mail do usuário
+--   $2 - password (VARCHAR) - Nova senha criptografada
+--   $3 - accept_terms (BOOLEAN) - Aceite dos termos (só aplica se ainda FALSE)
+--
+-- Retorno: Nenhum
+-- ============================================================================
 UPDATE account.users
 SET
     password = $2,

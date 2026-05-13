@@ -1,5 +1,17 @@
--- This file contains the SQL query for selecting a user system by email. It retrieves the user's information along with their associated tenant and role details.
--- The query uses LEFT JOINs to ensure that it returns results even if the user does not have an associated tenant or role. The result includes the user's email, CPF, full name, display name, root status, email confirmation status, password change requirement, terms acceptance, tenant ID, account type, role ID, role name, account type based on root status, ownership status, and timestamps for creation and last update.
+-- ============================================================================
+-- Arquivo: select-user-system-by-email.sql
+-- Operação: SELECT
+-- Schema/Tabela: account.users + account.users_tenants + account.roles +
+--               partner.tenants
+-- Descrição: Busca dados do usuário para contexto de sistema, incluindo
+--            informações de tenant e perfil. Trata usuários root com
+--            valores fixos para role_name e account_type.
+--
+-- Parâmetros:
+--   $1 - email (VARCHAR) - E-mail do usuário
+--
+-- Retorno: Dados do usuário com tenant, role e timestamps (LIMIT 1)
+-- ============================================================================
 SELECT
 	u.email,
 	u.cpf,

@@ -1,5 +1,17 @@
--- This file contains the SQL query for checking if an establishment exists in the database.
--- It is used to verify if an establishment with the given document and state registration already exists in the partner.establishments table.
+-- ============================================================================
+-- Arquivo: select-establishment-tenant-exists.sql
+-- Operação: SELECT
+-- Schema/Tabela: partner.tenants + partner.establishments
+-- Descrição: Verifica se já existe um tenant vinculado a um estabelecimento
+--            com determinado documento. Usado para evitar duplicidade de
+--            contratantes. Regras de unicidade iguais ao select-by-document.
+--
+-- Parâmetros:
+--   $1 - document (VARCHAR) - CNPJ ou CPF sem formatação
+--   $2 - ie (TEXT) - Inscrição Estadual (pode ser NULL)
+--
+-- Retorno: tenant_id, razao_social, document, ie (LIMIT 1)
+-- ============================================================================
 SELECT
     t.tenant_id,
     e.razao_social,
