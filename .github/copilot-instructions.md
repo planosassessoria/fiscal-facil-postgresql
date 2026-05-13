@@ -16,7 +16,73 @@ O **Fiscal Fácil** é um sistema de gestão fiscal e contábil robusto. O banco
 
 ---
 
-## 🛠 Padrões de Nomenclatura
+## � Nomenclatura de Arquivos SQL
+
+### Padrão geral para `scripts-backend/`
+
+```
+{operação}-{entidade}-{complemento}.sql
+```
+
+#### Operações disponíveis
+
+| Prefixo  | Uso                                                           |
+|----------|---------------------------------------------------------------|
+| `insert` | Criação de um novo registro                                   |
+| `select` | Consulta/leitura de dados                                     |
+| `update` | Atualização de dados existentes                               |
+| `delete` | Remoção de registros (hard delete)                            |
+| `upsert` | Inserção ou atualização condicional (`ON CONFLICT DO UPDATE`) |
+
+#### Entidade
+
+Nome do recurso principal, sempre no singular e em `kebab-case`:
+`user`, `session`, `establishment`, `tax-entity`, `module`, `permission`, `role`
+
+#### Complemento (opcional)
+
+Descreve filtro ou contexto da operação, termos unidos por hífen:
+`by-id`, `by-email`, `by-tenant-id`, `by-document`, `with-roles`, `with-tenant`, `email-confirmed`, `password`, `profile`
+
+#### Exemplos
+
+```
+✅ Correto                          ❌ Incorreto
+insert-user.sql                     getUser.sql            (camelCase)
+insert-user-tenant.sql              user_select.sql        (operação deve vir primeiro)
+select-user-by-email.sql            select_user_email.sql  (usar hífen, não underscore)
+select-users-by-tenant-id.sql       selectUserByEmail.sql  (camelCase)
+select-full-user-with-tenant.sql    userData.sql           (sem operação definida)
+update-user-password.sql
+update-user-email-confirmed.sql
+delete-session-by-session-id.sql
+upsert-establishment-address.sql
+```
+
+### Subdiretórios de `scripts-backend/`
+
+Cada subdiretório corresponde a um domínio/schema. Nome em `kebab-case`:
+
+```
+scripts-backend/
+├── account/       → schema account (IAM)
+├── partner/       → schema partner (estabelecimentos)
+├── history/       → schema history (eventos)
+├── common/        → utilitários sem schema fixo
+└── nfe/           → schema nfe (notas fiscais)
+```
+
+### Arquivos de schema e funções complexas (raiz e `functions/`)
+
+| Tipo                    | Padrão                              | Exemplo                                    |
+|-------------------------|-------------------------------------|--------------------------------------------|
+| Schema completo         | `schema_{nome}.sql`                 | `schema_partner.sql`                       |
+| Função de processamento | `{verbo}_{descricao}.sql`           | `validate_and_store_xml.sql`               |
+| Função de trigger       | `fn_{schema}_{acao}_{entidade}.sql` | `fn_partner_refresh_establishment_fts.sql` |
+
+---
+
+## ⚠️ Padrões de Nomenclatura
 
 ### Schemas e Objetos
 ```sql
