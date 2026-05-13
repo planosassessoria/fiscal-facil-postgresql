@@ -115,7 +115,7 @@ CREATE TABLE schema.exemplo_tabela (
 -- Trigger para atualizar timestamp automaticamente
 CREATE TRIGGER tr_upd_exemplo_tabela
     BEFORE UPDATE ON schema.exemplo_tabela
-    FOR each ROW 
+    FOR EACH ROW 
     EXECUTE FUNCTION fn_refresh_timestamp();
 ```
 
@@ -293,7 +293,7 @@ BEGIN
     
     -- Reindex semanal (apenas aos domingos)
     IF EXTRACT(DOW FROM NOW()) = 0 THEN
-        REINDEX INDEX CONCURRENTLY idx_establishments_search;
+        REINDEX INDEX CONCURRENTLY idx_establishments_fts;
         REINDEX INDEX CONCURRENTLY idx_nfe_emit_date;
     END IF;
     
