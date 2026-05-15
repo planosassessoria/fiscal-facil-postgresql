@@ -84,6 +84,20 @@ scripts-backend/
 
 ## ⚠️ Padrões de Nomenclatura
 
+### Resumo Rápido
+
+| Elemento        | Padrão                          | Exemplo                          |
+|-----------------|---------------------------------|----------------------------------|
+| Tabela          | `snake_case` plural             | `establishments`, `tax_entities` |
+| Coluna          | `snake_case` singular           | `created_at`, `cnpj_number`      |
+| PK              | `UUID` + `gen_random_uuid()`    | `est_id`, `user_id`              |
+| ID              | Sempre com prefixo descritivo   | `est_id` (nunca apenas `id`)     |
+| Campo comum     | Prefixo da entidade             | `est_description`, `est_fts`     |
+| Constraint UK   | `uk_[tabela]_[colunas]`         | `uk_establishments_cnpj`         |
+| Constraint FK   | `fk_[tabela]_[referencia]`      | `fk_establishments_address`      |
+| Constraint CK   | `ck_[tabela]_[regra]`           | `ck_establishments_cnpj_valid`   |
+| Termo fiscal BR | Português aceito (ver exceções) | `razao_social`, `fantasia`       |
+
 ### Schemas e Objetos
 ```sql
 -- ✅ Schemas lógicos por domínio
@@ -510,15 +524,8 @@ COMMENT ON COLUMN partner.establishments.cnpj_number IS
 
 ### 🇧🇷 **Orientação Especial - Contexto Fiscal Brasileiro**
 
-**Seja flexível com nomenclatura quando:**
-- Campos representam conceitos fiscais consagrados (`razao_social`, `fantasia`, `situacao`)  
-- Usar termos em inglês pode confundir desenvolvedores brasileiros da área fiscal
-- A terminologia em português é amplamente conhecida pelo mercado
+Para nomenclatura fiscal, aplique as regras da seção **"Exceção: Nomenclatura Fiscal Brasileira"** e a tabela de **"Regras de prioridade"** definidas em **Padrões de Nomenclatura** acima. Em resumo:
 
-**Sempre mantenha:**
-- Prefixos em IDs (`est_id`, `tax_id`, `address_id`) - **OBRIGATÓRIO**
-- Prefixos em FTS (`est_fts`, `tax_fts`) - **OBRIGATÓRIO**  
-- Constraints nomeadas adequadamente - **OBRIGATÓRIO**
-- Triggers e índices seguindo padrões - **OBRIGATÓRIO**
-
-**Balance pragmatismo com boas práticas**: aceite `razao_social` mas recomende `est_description` em vez de só `description`.
+- Termos fiscais consagrados (`razao_social`, `fantasia`, `cnpj`, `ie`, `d_emi`) → usar português.
+- Campos genéricos (`description`, `status`, `fts`) → usar prefixo da entidade (`est_description`, `est_fts`).
+- IDs, FTS, constraints e triggers → seguir obrigatoriamente os padrões definidos neste guia.
