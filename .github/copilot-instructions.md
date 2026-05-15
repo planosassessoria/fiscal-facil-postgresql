@@ -74,11 +74,11 @@ scripts-backend/
 
 ### Arquivos de schema e funções complexas (raiz e `functions/`)
 
-| Tipo                    | Padrão                              | Exemplo                                    |
-|-------------------------|-------------------------------------|--------------------------------------------|
-| Schema completo         | `schema_{nome}.sql`                 | `schema_partner.sql`                       |
-| Função de processamento | `{verbo}_{descricao}.sql`           | `validate_and_store_xml.sql`               |
-| Função de trigger       | `fn_{schema}_{acao}_{entidade}.sql` | `fn_partner_refresh_establishment_fts.sql` |
+| Tipo                    | Padrão                                    | Exemplo                                              |
+|-------------------------|--------------------------------------------|-------------------------------------------------|
+| Schema completo         | `schema_{nome}.sql`                        | `schema_partner.sql`                                 |
+| Função de processamento | `{schema}.fn_{verbo}_{descricao}.sql`      | `xml.fn_validate_and_store_xml.sql`                  |
+| Função de trigger       | `{schema}.fn_{acao}_{entidade}.sql`        | `partner.fn_refresh_establishment_fts.sql`           |
 
 ---
 
@@ -90,7 +90,8 @@ scripts-backend/
 |-----------------|---------------------------------|----------------------------------|
 | Tabela          | `snake_case` plural             | `establishments`, `tax_entities` |
 | Coluna          | `snake_case` singular           | `created_at`, `cnpj_number`      |
-| PK              | `UUID` + `gen_random_uuid()`    | `est_id`, `user_id`              |
+| PK (exposta)    | `UUID` + `gen_random_uuid()`    | `est_id`, `user_id`              |
+| PK (interna)    | `BIGINT GENERATED AS IDENTITY`  | `xml_id`, `id_nf_ref`            |
 | ID              | Sempre com prefixo descritivo   | `est_id` (nunca apenas `id`)     |
 | Campo comum     | Prefixo da entidade             | `est_description`, `est_fts`     |
 | Constraint UK   | `uk_[tabela]_[colunas]`         | `uk_establishments_cnpj`         |
@@ -112,7 +113,8 @@ CREATE SCHEMA IF NOT EXISTS audit;      -- Auditoria
 ### Convenções de Nomes
 - **Tabelas**: `snake_case` no plural (ex: `establishments`, `tax_entities`)
 - **Colunas**: `snake_case` no singular (ex: `created_at`, `cnpj_number`)
-- **Chaves Primárias**: Sempre `UUID` com `gen_random_uuid()`
+- **Chaves Primárias (tabelas expostas ao frontend)**: `UUID` com `gen_random_uuid()` — para tabelas cujo ID aparece em APIs, URLs ou no frontend (ex: `account`, `partner`)
+- **Chaves Primárias (tabelas internas)**: `BIGINT GENERATED ALWAYS AS IDENTITY` ou `BIGSERIAL` — para tabelas cujo ID é apenas referência interna no banco, sem exposição externa (ex: `nota_fiscal`, `xml`). Menor custo de armazenamento e melhor performance em JOINs de alto volume.
 - **IDs**: NUNCA usar apenas `id` - sempre com prefixo descritivo:
   - ✅ `est_id`, `establishment_id`, `xml_id`, `user_id`
   - ❌ `id` (genérico demais)
@@ -168,10 +170,27 @@ ADD CONSTRAINT ck_establishments_cnpj_valid CHECK (length(cnpj_number) = 14);
 
 ### Ordem Padrão de Colunas
 ```sql
+-- Tabela exposta ao frontend (UUID)
 CREATE TABLE schema.exemplo_tabela (
     -- 1. CHAVES
     exemplo_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     parent_id UUID NOT NULL,
+    ...
+);
+
+-- Tabela interna/não exposta (BIGINT)
+CREATE TABLE schema.exemplo_tabela_interna (
+    -- 1. CHAVES
+    exemplo_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    parent_id BIGINT NOT NULL,
+    ...
+);
+
+-- Ordem geral de colunas (aplicável a ambos os tipos):
+CREATE TABLE schema.exemplo (
+    -- 1. CHAVES (UUID ou BIGINT conforme contexto)
+    exemplo_id ... PRIMARY KEY,
+    parent_id ...,
     
     -- 2. DADOS OBRIGATÓRIOS  
     exemplo_nome VARCHAR(100) NOT NULL,

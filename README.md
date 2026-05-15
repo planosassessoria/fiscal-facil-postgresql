@@ -187,11 +187,12 @@ scripts-backend/
 
 Para arquivos fora de `scripts-backend/`:
 
-| Tipo                        | Padrão de nome                              | Exemplo                                  |
-|-----------------------------|---------------------------------------------|------------------------------------------|
-| Schema completo             | `schema_{nome}.sql`                         | `schema_partner.sql`                     |
-| Função de processamento     | `{verbo}_{descricao}.sql`                   | `validate_and_store_xml.sql`             |
-| Função de trigger           | `fn_{schema}_{acao}_{entidade}.sql`         | `fn_partner_refresh_establishment_fts.sql` |
+| Tipo                        | Padrão de nome                                      | Exemplo                                              |
+|-----------------------------|------------------------------------------------------|------------------------------------------------------|
+| Schema completo             | `schema_{nome}.sql`                                  | `schema_partner.sql`                                 |
+| Função de processamento     | `{schema}.fn_{verbo}_{descricao}.sql`                | `xml.fn_validate_and_store_xml.sql`                  |
+| Função de desestruturação   | `{schema}.fn_{verbo}_{descricao}.sql`                | `xml.fn_destructure_xml_to_nota_fiscal_record.sql`   |
+| Função de trigger           | `{schema}.fn_{acao}_{entidade}.sql`                  | `partner.fn_refresh_establishment_fts.sql`           |
 
 ---
 
@@ -292,7 +293,10 @@ COMMENT ON INDEX idx_establishments_fts IS
 
 - **Nomenclatura de objetos:** `snake_case` para todos os objetos; prefixo descritivo em IDs (`est_id`, `user_id`) e campos FTS (`est_fts`, `user_fts`)
 - **Nomenclatura de arquivos:** `kebab-case` com padrão `{operação}-{entidade}-{complemento}.sql`
-- **Chaves primárias:** sempre `UUID` gerado via `gen_random_uuid()`
+- **Chaves primárias — estratégia por contexto:**
+  - **Tabelas expostas ao frontend** (account, partner): `UUID` gerado via `gen_random_uuid()`. Evita exposição de sequências e facilita integração entre sistemas.
+  - **Tabelas internas/não expostas** (nota_fiscal, xml): `BIGINT GENERATED ALWAYS AS IDENTITY` ou `BIGSERIAL`. Menor custo de armazenamento, indexação mais eficiente e melhor performance em JOINs de alto volume.
+  - **Regra geral:** se o ID será visível em URLs, APIs ou no frontend, use `UUID`. Se o ID é apenas referência interna entre tabelas do banco, prefira `BIGINT`.
 - **Timestamps:** `created_at` e `updated_at` como `TIMESTAMPTZ NOT NULL DEFAULT NOW()`, atualizados automaticamente por trigger
 - **Soft delete:** campos `deleted_at` e `deleted_by` para dados críticos de auditoria
 - **Full Text Search:** configuração `public.simple_portuguese` com `unaccent` para suporte a buscas sem acento em português
