@@ -3,14 +3,14 @@
 -- Operação: FUNCTION CALL
 -- Schema/Função: xml.fn_destructure_xml_to_nota_fiscal_record
 -- Descrição: Chama a função que desestrutura um XML fiscal e insere os dados
---            na tabela de notas fiscais. Transforma o XML bruto em registros
---            estruturados para consulta.
+--            nas tabelas do schema nota_fiscal. Transforma o XML bruto em
+--            registros estruturados para consulta.
 --
 -- Parâmetros:
---   $1 - xml_id (UUID) - ID do XML armazenado na xml_storage
---   $2 - user_email (VARCHAR) - E-mail do usuário que processou
+--   $1 - _xml_id (BIGINT) - ID do XML armazenado na xml.xml_storage
+--   $2 - _replace_if_exists (BOOLEAN) - Se TRUE, substitui registro existente (DEFAULT FALSE)
 --
--- Retorno: JSON com resultado da desestruturação (sucesso/erros)
+-- Retorno: JSONB com resultado da desestruturação (sucesso/skipped/erros)
 -- ============================================================================
 SELECT xml.fn_destructure_xml_to_nota_fiscal_record(
 	$1,
