@@ -109,9 +109,17 @@ BEGIN
 
     -- =========================================================================
     -- 2. Extrai e valida a Chave de Acesso (44 dígitos)
+    --    A expressão é avaliada inteiramente como TEXT antes da atribuição,
+    --    evitando overflow em VARCHAR(44) quando o atributo @Id contém o
+    --    prefixo literal "NFe" (ex: "NFe51260..." = 47 chars).
     -- =========================================================================
-    _ch_nf := (xpath('//nfe:infNFe/@Id', _xml_content, _ns))[1]::text;
-    _ch_nf := regexp_replace(_ch_nf, '[^0-9]', '', 'g');
+    _ch_nf := NULLIF(
+        regexp_replace(
+            COALESCE((xpath('//nfe:infNFe/@Id', _xml_content, _ns))[1]::TEXT, ''),
+            '[^0-9]', '', 'g'
+        ),
+        ''
+    );
 
     IF _ch_nf IS NULL OR length(_ch_nf) != 44 THEN
         RETURN jsonb_build_object(
@@ -448,7 +456,10 @@ BEGIN
             (xpath('//nfe:dest/nfe:enderDest/nfe:nro/text()',          _xml_content, _ns))[1]::text,
             (xpath('//nfe:dest/nfe:enderDest/nfe:xCpl/text()',         _xml_content, _ns))[1]::text,
             COALESCE((xpath('//nfe:dest/nfe:enderDest/nfe:xBairro/text()', _xml_content, _ns))[1]::text, ''),
-            (xpath('//nfe:dest/nfe:enderDest/nfe:cMun/text()',         _xml_content, _ns))[1]::text::integer,
+            COALESCE(
+                NULLIF((xpath('//nfe:dest/nfe:enderDest/nfe:cMun/text()', _xml_content, _ns))[1]::text, '')::integer,
+                NULLIF((xpath('//nfe:ide/nfe:cMunFG/text()', _xml_content, _ns))[1]::text, '')::integer
+            ),
             COALESCE((xpath('//nfe:dest/nfe:enderDest/nfe:xMun/text()', _xml_content, _ns))[1]::text, ''),
             COALESCE((xpath('//nfe:dest/nfe:enderDest/nfe:UF/text()',   _xml_content, _ns))[1]::text, ''),
             COALESCE((xpath('//nfe:dest/nfe:enderDest/nfe:CEP/text()',  _xml_content, _ns))[1]::text, ''),
@@ -1434,7 +1445,7 @@ BEGIN
         'has_avulsa',         _has_avulsa,
         'has_nf_ref',         _has_nf_ref,
         'items_processed',    _item_count,
-        'processing_time_ms', ROUND(EXTRACT(epoch FROM (clock_timestamp() - _start_time)) * 1000, 2)
+        'processing_time_ms', ROUND((EXTRACT(epoch FROM (clock_timestamp() - _start_time)) * 1000)::numeric, 2)
     );
 
 EXCEPTION WHEN OTHERS THEN

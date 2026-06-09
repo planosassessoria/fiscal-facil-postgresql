@@ -65,23 +65,10 @@ ALTER FUNCTION xml.fn_update_job_fts() OWNER TO dorcilio;
 COMMENT ON FUNCTION xml.fn_update_job_fts() IS
     'Atualiza o vetor FTS de import_job. Pesos: file_name e cpf_cnpj = A; user_email, job_type e job_status = B.';
 
--- Preenche emission_year automaticamente antes do INSERT a partir do ch_nf.
--- Necessário pois colunas geradas (GENERATED ALWAYS AS) não podem ser chave de particionamento.
-CREATE OR REPLACE FUNCTION xml.fn_set_emission_year()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $$
-BEGIN
-    NEW.emission_year  := 2000 + CAST(SUBSTRING(NEW.ch_nf FROM 3 FOR 2) AS SMALLINT);
-    NEW.emission_month :=         CAST(SUBSTRING(NEW.ch_nf FROM 5 FOR 2) AS SMALLINT);
-    RETURN NEW;
-END;
-$$;
-ALTER FUNCTION xml.fn_set_emission_year() OWNER TO dorcilio;
-COMMENT ON FUNCTION xml.fn_set_emission_year() IS
-    'Calcula e preenche emission_year (posições 3-4 do ch_nf → 20AA) e emission_month (posições 5-6 do ch_nf → MM) '
-    'antes de cada INSERT em xml.xml_storage. '
-    'Garante que o roteamento para a partição correta e os índices de período sejam sempre automáticos e sem intervenção manual.'
+-- emission_year e emission_month são calculados inline em xml.fn_validate_and_store_xml
+-- durante o INSERT, evitando o erro do PostgreSQL:
+--   "moving row to another partition during a BEFORE FOR EACH ROW trigger is not supported"
+-- A função fn_set_emission_year e o trigger tr_set_xml_storage_emission_year foram removidos.
 
 -- -----------------------------------------------------------------------------
 -- 2. TABELA: xml.xml_storage
@@ -143,13 +130,13 @@ COMMENT ON COLUMN xml.xml_storage.xml_id IS
 
 COMMENT ON COLUMN xml.xml_storage.emission_year IS
     'Ano de emissão do documento fiscal, extraído das posições 3-4 do ch_nf (AA → 20AA). '
-    'Preenchido automaticamente pela trigger tr_set_xml_storage_emission_year — não informar na inserção. '
+    'Calculado inline por xml.fn_validate_and_store_xml no momento do INSERT. '
     'Define a partição onde o registro é armazenado. '
     'Exemplo: ch_nf iniciando "3524..." → emission_year = 2024.'
 
 COMMENT ON COLUMN xml.xml_storage.emission_month IS
     'Mês de emissão do documento fiscal (1–12), extraído das posições 5-6 do ch_nf (MM). '
-    'Preenchido automaticamente pelo mesmo trigger de emission_year — não informar na inserção. '
+    'Calculado inline por xml.fn_validate_and_store_xml no momento do INSERT. '
     'Combinado com emission_year e cpf_cnpj, viabiliza downloads de pacotes de XML por período '
     '(ex: "todos os XMLs do CNPJ X em janeiro/2025") com partition pruning + índice composto, '
     'sem necessidade de varrer o xml_content ou fazer JOIN com nota_fiscal.b01_ide.'
@@ -239,12 +226,8 @@ CREATE INDEX IF NOT EXISTS idx_xml_storage_dest_period
     ON xml.xml_storage (dest_cpf_cnpj, emission_year, emission_month)
     WHERE dest_cpf_cnpj IS NOT NULL;
 
--- Trigger que preenche emission_year automaticamente a partir do ch_nf antes de cada INSERT.
--- Deve ser BEFORE INSERT para que o valor esteja disponível no roteamento da partição.
-CREATE TRIGGER tr_set_xml_storage_emission_year
-    BEFORE INSERT ON xml.xml_storage
-    FOR EACH ROW
-    EXECUTE FUNCTION xml.fn_set_emission_year();
+-- Trigger tr_set_xml_storage_emission_year removido.
+-- emission_year e emission_month são fornecidos diretamente por xml.fn_validate_and_store_xml.
 
 -- -----------------------------------------------------------------------------
 -- 3. TABELA: xml.import_job
