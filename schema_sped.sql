@@ -184,7 +184,6 @@ CREATE TABLE IF NOT EXISTS sped.sped_jobs (
     requested_by_email VARCHAR(320),
     started_at TIMESTAMPTZ,
     finished_at TIMESTAMPTZ,
-    failed_at TIMESTAMPTZ,
     last_heartbeat_at TIMESTAMPTZ,
     job_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
@@ -258,9 +257,7 @@ COMMENT ON COLUMN sped.sped_jobs.requested_by_email IS
 COMMENT ON COLUMN sped.sped_jobs.started_at IS
     'Timestamp de início efetivo do processamento.';
 COMMENT ON COLUMN sped.sped_jobs.finished_at IS
-    'Timestamp de término bem-sucedido do workflow.';
-COMMENT ON COLUMN sped.sped_jobs.failed_at IS
-    'Timestamp em que o workflow foi para estado FAILED.';
+    'Timestamp em que o workflow foi finalizado.';
 COMMENT ON COLUMN sped.sped_jobs.last_heartbeat_at IS
     'Último heartbeat de execução para monitorar jobs travados.';
 COMMENT ON COLUMN sped.sped_jobs.job_metadata IS

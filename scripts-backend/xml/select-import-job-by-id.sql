@@ -15,6 +15,7 @@ SELECT
     j.tenant_id,
     j.user_email,
     j.cpf_cnpj,
+    j.est_id,
     j.job_type,
     j.job_status,
     j.file_name,

@@ -8,12 +8,12 @@
 --
 --            Montagem do VALUES via pg-format no backend:
 --              const rows = emails.map(email => [notificationId, email])
---              const sql  = format(query, rows)   // substitui %L
+--              const sql  = format(query, rows)   // substitui %%L
 --
 --            ON CONFLICT DO NOTHING: idempotente — reenvios não duplicam.
 --
 -- Parâmetros:
---   %L - Array de pares [notification_id (UUID), user_email (VARCHAR)]
+--   %%L - Array de pares [notification_id (UUID), user_email (VARCHAR)]
 --        Interpolado pelo backend via pg-format antes de executar.
 --
 -- Retorno: Nenhum
