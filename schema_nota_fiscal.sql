@@ -23,16 +23,40 @@ CREATE OR REPLACE FUNCTION nota_fiscal.ts_vector_update_b01_ide()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
+DECLARE
+    v_reference_date date;
+    v_month_name_pt text;
 BEGIN
+    v_reference_date := COALESCE(NEW.dh_emi::date, NEW.dt_doc);
+
+    v_month_name_pt := CASE EXTRACT(MONTH FROM v_reference_date)::integer
+        WHEN 1 THEN 'janeiro'
+        WHEN 2 THEN 'fevereiro'
+        WHEN 3 THEN 'marco'
+        WHEN 4 THEN 'abril'
+        WHEN 5 THEN 'maio'
+        WHEN 6 THEN 'junho'
+        WHEN 7 THEN 'julho'
+        WHEN 8 THEN 'agosto'
+        WHEN 9 THEN 'setembro'
+        WHEN 10 THEN 'outubro'
+        WHEN 11 THEN 'novembro'
+        WHEN 12 THEN 'dezembro'
+    END;
+
     NEW.nota_fiscal_fts :=
         setweight(to_tsvector('public.simple_portuguese', COALESCE(NEW.ch_nf, '')),                        'A') ||
         setweight(to_tsvector('public.simple_portuguese', COALESCE(NEW.cpf_cnpj, '')),                     'A') ||
         setweight(to_tsvector('public.simple_portuguese', COALESCE(NEW.dest_cpf_cnpj, '')),                'A') ||
+        setweight(to_tsvector('public.simple_portuguese', COALESCE(TO_CHAR(v_reference_date, 'MM/YYYY'), '')), 'A') ||
+        setweight(to_tsvector('public.simple_portuguese', COALESCE(v_month_name_pt || ' ' || TO_CHAR(v_reference_date, 'YYYY'), '')), 'A') ||
         setweight(to_tsvector('public.simple_portuguese', COALESCE(NEW.ie, '')),                           'B') ||
         setweight(to_tsvector('public.simple_portuguese', COALESCE(NEW.dest_ie, '')),                      'B') ||
         setweight(to_tsvector('public.simple_portuguese', COALESCE(NEW.num_doc::TEXT, '')),                'B') ||
         setweight(to_tsvector('public.simple_portuguese', COALESCE(NEW.nat_oper, '')),                     'B') ||
-        setweight(to_tsvector('public.simple_portuguese', COALESCE(TO_CHAR(NEW.dh_emi, 'dd/mm/yyyy'), '')), 'C');
+        setweight(to_tsvector('public.simple_portuguese', COALESCE(TO_CHAR(v_reference_date, 'DD/MM/YYYY'), '')), 'B') ||
+        setweight(to_tsvector('public.simple_portuguese', COALESCE(v_month_name_pt, '')),                  'B') ||
+        setweight(to_tsvector('public.simple_portuguese', COALESCE(TO_CHAR(v_reference_date, 'YYYY-MM-DD'), '')), 'C');
     RETURN NEW;
 END;
 $$;
@@ -41,7 +65,7 @@ ALTER FUNCTION nota_fiscal.ts_vector_update_b01_ide() OWNER TO dorcilio;
 
 COMMENT ON FUNCTION nota_fiscal.ts_vector_update_b01_ide() IS
     'Atualiza o vetor FTS de nota_fiscal.b01_ide. '
-    'Pesos: ch_nf, cpf_cnpj, dest_cpf_cnpj = A | ie, dest_ie, num_doc, nat_oper = B | dh_emi = C.';
+    'Pesos: ch_nf, cpf_cnpj, dest_cpf_cnpj, MM/YYYY e mes+ano = A | ie, dest_ie, num_doc, nat_oper, DD/MM/YYYY e mes = B | YYYY-MM-DD = C.';
 
 -- =============================================================================
 -- FUNÇÃO: Atualiza FTS da tabela i01_prod
@@ -143,7 +167,7 @@ COMMENT ON COLUMN nota_fiscal.b01_ide.dest_cpf_cnpj IS 'CPF (11 dígitos numéri
 COMMENT ON COLUMN nota_fiscal.b01_ide.dest_ie       IS 'Inscrição Estadual do destinatário.';
 COMMENT ON COLUMN nota_fiscal.b01_ide.created_at    IS 'Timestamp de importação do registro no banco.';
 COMMENT ON COLUMN nota_fiscal.b01_ide.updated_at    IS 'Timestamp da última atualização do registro.';
-COMMENT ON COLUMN nota_fiscal.b01_ide.nota_fiscal_fts IS 'Vetor FTS calculado sobre ch_nf, cpf_cnpj, dest_cpf_cnpj (peso A), ie, dest_ie, num_doc, nat_oper (peso B) e dh_emi (peso C).';
+COMMENT ON COLUMN nota_fiscal.b01_ide.nota_fiscal_fts IS 'Vetor FTS calculado sobre ch_nf, cpf_cnpj, dest_cpf_cnpj, periodo MM/YYYY e mes+ano (peso A), ie, dest_ie, num_doc, nat_oper, DD/MM/YYYY e mes (peso B), alem de YYYY-MM-DD (peso C).';
 COMMENT ON COLUMN nota_fiscal.b01_ide.cod_uf      IS 'Código da UF do emitente segundo tabela IBGE (B02 cUF).';
 COMMENT ON COLUMN nota_fiscal.b01_ide.ind_pag     IS 'Indicador da forma de pagamento: 0=À Vista, 1=A Prazo, 2=Outros. Campo excluído no leiaute 4.0 (NT2016.002).';
 COMMENT ON COLUMN nota_fiscal.b01_ide.dt_doc      IS 'Data de emissão da NF-e — somente data, sem hora (B09 dhEmi parcial).';
@@ -171,7 +195,7 @@ CREATE INDEX idx_b01_ide_xml_id         ON nota_fiscal.b01_ide (xml_id) WHERE xm
 
 -- Trigger FTS
 CREATE TRIGGER tr_fts_b01_ide
-    BEFORE INSERT OR UPDATE OF ch_nf, cpf_cnpj, dest_cpf_cnpj, ie, dest_ie, num_doc, nat_oper, dh_emi
+    BEFORE INSERT OR UPDATE OF ch_nf, cpf_cnpj, dest_cpf_cnpj, ie, dest_ie, num_doc, nat_oper, dh_emi, dt_doc
     ON nota_fiscal.b01_ide
     FOR EACH ROW
     EXECUTE FUNCTION nota_fiscal.ts_vector_update_b01_ide();

@@ -16,7 +16,60 @@ COMMENT ON SCHEMA sped IS
     'controle operacional de jobs/protocolos (importação, auditoria, exportação, transmissão) e timeline simples de status.'
 
 -- -----------------------------------------------------------------------------
--- 1. TABELAS
+-- 1. FUNÇÕES
+-- -----------------------------------------------------------------------------
+
+-- Atualiza o vetor FTS de sped_files com foco em busca por nome de arquivo
+-- e período de referência em formatos brasileiros.
+CREATE OR REPLACE FUNCTION sped.fn_refresh_sped_file_fts()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_month_name_pt text;
+    v_period_mm_yyyy text;
+    v_period_dd_mm_yyyy text;
+    v_period_month_year text;
+BEGIN
+    v_month_name_pt := CASE EXTRACT(MONTH FROM NEW.reference_period)::integer
+        WHEN 1 THEN 'janeiro'
+        WHEN 2 THEN 'fevereiro'
+        WHEN 3 THEN 'marco'
+        WHEN 4 THEN 'abril'
+        WHEN 5 THEN 'maio'
+        WHEN 6 THEN 'junho'
+        WHEN 7 THEN 'julho'
+        WHEN 8 THEN 'agosto'
+        WHEN 9 THEN 'setembro'
+        WHEN 10 THEN 'outubro'
+        WHEN 11 THEN 'novembro'
+        WHEN 12 THEN 'dezembro'
+    END;
+
+    v_period_mm_yyyy := to_char(NEW.reference_period, 'MM/YYYY');
+    v_period_dd_mm_yyyy := to_char(NEW.reference_period, 'DD/MM/YYYY');
+    v_period_month_year := v_month_name_pt || ' ' || to_char(NEW.reference_period, 'YYYY');
+
+    NEW.sped_file_fts :=
+        setweight(to_tsvector('public.simple_portuguese', COALESCE(NEW.source_file_name, '')), 'A') ||
+        setweight(to_tsvector('public.simple_portuguese', COALESCE(v_period_mm_yyyy, '')), 'A') ||
+        setweight(to_tsvector('public.simple_portuguese', COALESCE(v_period_month_year, '')), 'A') ||
+        setweight(to_tsvector('public.simple_portuguese', COALESCE(v_period_dd_mm_yyyy, '')), 'B') ||
+        setweight(to_tsvector('public.simple_portuguese', COALESCE(v_month_name_pt, '')), 'B') ||
+        setweight(to_tsvector('public.simple_portuguese', COALESCE(to_char(NEW.reference_period, 'YYYY-MM-DD'), '')), 'C');
+
+    RETURN NEW;
+END;
+$$;
+
+ALTER FUNCTION sped.fn_refresh_sped_file_fts() OWNER TO dorcilio;
+
+COMMENT ON FUNCTION sped.fn_refresh_sped_file_fts() IS
+    'Atualiza o vetor FTS de sped.sped_files com pesos para nome do arquivo e período de referência. '
+    'Suporta buscas por MM/YYYY, DD/MM/YYYY, mes em texto (ex: maio) e mes + ano (ex: maio 2026).';
+
+-- -----------------------------------------------------------------------------
+-- 2. TABELAS
 -- -----------------------------------------------------------------------------
 
 -- Metadados do arquivo de origem (sem status de processamento)
@@ -25,6 +78,7 @@ CREATE TABLE IF NOT EXISTS sped.sped_files (
     document VARCHAR(14) NOT NULL,
     ie VARCHAR(20),
     reference_period DATE NOT NULL,
+    sped_file_fts TSVECTOR,
     layout_version VARCHAR(4),
     source_file_name VARCHAR(255),
     source_file_sha256 CHAR(64),
@@ -55,6 +109,8 @@ COMMENT ON COLUMN sped.sped_files.ie IS
     'Inscrição Estadual do declarante, quando aplicável.';
 COMMENT ON COLUMN sped.sped_files.reference_period IS
     'Período fiscal de referência declarado no arquivo SPED.';
+COMMENT ON COLUMN sped.sped_files.sped_file_fts IS
+    'Vetor de busca textual para pesquisas por nome de arquivo e período (MM/YYYY, DD/MM/YYYY, mes e mes + ano).';
 COMMENT ON COLUMN sped.sped_files.layout_version IS
     'Versão do leiaute do SPED (exemplo: 019).';
 COMMENT ON COLUMN sped.sped_files.source_file_name IS
@@ -403,6 +459,9 @@ CREATE INDEX IF NOT EXISTS idx_sped_records_payload_gin
 CREATE INDEX IF NOT EXISTS idx_sped_files_document_period
     ON sped.sped_files (document, reference_period DESC);
 
+CREATE INDEX IF NOT EXISTS idx_sped_files_fts
+    ON sped.sped_files USING gin (sped_file_fts);
+
 -- Consultas de workflow do job
 CREATE INDEX IF NOT EXISTS idx_sped_jobs_file
     ON sped.sped_jobs (sped_file_id);
@@ -464,6 +523,8 @@ COMMENT ON INDEX sped.idx_sped_records_c170_ncm IS
     'Índice parcial para auditoria focada em NCM nos registros de itens C170.';
 COMMENT ON INDEX sped.idx_sped_records_payload_gin IS
     'Índice GIN para predicados dinâmicos em JSONB sobre payload de registros SPED.';
+COMMENT ON INDEX sped.idx_sped_files_fts IS
+    'Índice GIN para pesquisa textual por nome de arquivo e representações do período de referência.';
 COMMENT ON INDEX sped.idx_sped_jobs_status_updated IS
     'Otimiza dashboards operacionais por status de workflow e atividade recente.';
 COMMENT ON INDEX sped.idx_sped_job_timeline_declaration_date IS
@@ -478,6 +539,11 @@ COMMENT ON INDEX sped.idx_sped_job_timeline_recorded_by IS
 -- -----------------------------------------------------------------------------
 -- 4. TRIGGERS
 -- -----------------------------------------------------------------------------
+
+CREATE TRIGGER tr_refresh_sped_file_fts
+    BEFORE INSERT OR UPDATE OF source_file_name, reference_period ON sped.sped_files
+    FOR EACH ROW
+    EXECUTE FUNCTION sped.fn_refresh_sped_file_fts();
 
 CREATE TRIGGER tr_upd_sped_files
     BEFORE UPDATE ON sped.sped_files

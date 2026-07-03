@@ -8,6 +8,15 @@
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
+-- 0. CONFIGURAÇÃO DE SESSÃO
+-- -----------------------------------------------------------------------------
+
+-- Define locale de tempo padrão do banco para português do Brasil.
+-- Configuração persistente aplicada a novas conexões deste banco.
+-- Impacta formatações com nomes de mês/dia (ex: to_char com Month/Day).
+ALTER DATABASE nome_do_banco SET lc_time = 'pt_BR.utf8';
+
+-- -----------------------------------------------------------------------------
 -- 1. EXTENSÕES
 -- -----------------------------------------------------------------------------
 

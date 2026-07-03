@@ -43,6 +43,11 @@ WITH synced_nf AS (
         tot.v_nf                          AS v_nf,
         tot.v_st                          AS v_st,
         b01.xml_id                        AS xml_id,
+        (
+            COALESCE(b01.nota_fiscal_fts, ''::tsvector) ||
+            setweight(to_tsvector('public.simple_portuguese', COALESCE(emit.nome, '')), 'B') ||
+            setweight(to_tsvector('public.simple_portuguese', COALESCE(dest.nome, '')), 'B')
+        )                                  AS search_fts,
         TRUE                              AS is_synced
     FROM nota_fiscal.b01_ide b01
     LEFT JOIN nota_fiscal.c01_emit_c05_ender emit
@@ -68,6 +73,7 @@ xml_only AS (
         NULL::numeric AS v_nf,
         NULL::numeric AS v_st,
         x.xml_id AS xml_id,
+        COALESCE(x.xml_storage_fts, ''::tsvector) AS search_fts,
         FALSE AS is_synced
     FROM xml.xml_storage x
     LEFT JOIN nota_fiscal.b01_ide b01
@@ -105,19 +111,7 @@ WHERE
     AND ($3::date IS NULL OR b.dh_emi::date <= $3::date)
     AND (
         $4::text IS NULL
-        OR to_tsvector(
-            'public.simple_portuguese',
-            concat_ws(
-                ' ',
-                COALESCE(b.ch_nf, ''),
-                COALESCE(b.emit_cpf_cnpj, ''),
-                COALESCE(b.dest_cpf_cnpj, ''),
-                COALESCE(b.emit_x_nome, ''),
-                COALESCE(b.dest_x_nome, ''),
-                COALESCE(b.n_nf, ''),
-                COALESCE(b.serie, '')
-            )
-        ) @@ to_tsquery('simple', public.fn_format_tsquery($4::text))
+        OR b.search_fts @@ to_tsquery('public.simple_portuguese', public.fn_format_tsquery($4::text))
     )
 ORDER BY
     %I %s NULLS LAST,
