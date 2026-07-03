@@ -171,8 +171,9 @@ BEGIN
 
     -- ------------------------------------------------------------------
     -- 8. Insert the XML
-    --    emission_year and emission_month are computed by
-    --    trigger tr_set_xml_storage_emission_year (BEFORE INSERT).
+    --    emission_year and emission_month are computed inline to avoid
+    --    the "moving row to another partition" error that occurs when
+    --    a BEFORE trigger modifies the partition key.
     -- ------------------------------------------------------------------
     INSERT INTO xml.xml_storage (
         ch_nf,
@@ -181,7 +182,9 @@ BEGIN
         dest_cpf_cnpj,
         dest_ie,
         xml_content,
-        import_job_id
+        import_job_id,
+        emission_year,
+        emission_month
     ) VALUES (
         _ch_nf,
         _emit_cpf_cnpj,
@@ -189,7 +192,9 @@ BEGIN
         _dest_cpf_cnpj,
         _dest_ie,
         _xml_content,
-        _import_job_id
+        _import_job_id,
+        2000 + CAST(SUBSTRING(_ch_nf FROM 3 FOR 2) AS SMALLINT),
+        CAST(SUBSTRING(_ch_nf FROM 5 FOR 2) AS SMALLINT)
     )
     RETURNING xml_id INTO _new_xml_id;
 
@@ -213,10 +218,3 @@ COMMENT ON FUNCTION xml.fn_validate_and_store_xml(UUID, UUID, XML) IS
     '(returns existing xml_id and ch_nf), and participant match via est_id against '
     'partner.establishments. Returns JSONB: inserted=true with xml_id on success, '
     'or inserted=false with a detailed error flags object on failure.';
-
-
-SELECT xml.fn_validate_and_store_xml(
-	<_est_id uuid>,
-	<_import_job_id uuid>,
-	<_xml_content xml>
-)

@@ -126,7 +126,7 @@ ALTER TABLE nota_fiscal.b01_ide OWNER TO dorcilio;
 COMMENT ON TABLE nota_fiscal.b01_ide IS 'Tabela raiz da NF-e. Toda deleção deve partir desta tabela e propagar em cascade.';
 COMMENT ON COLUMN nota_fiscal.b01_ide.ch_nf         IS 'Chave de acesso da NF-e (44 dígitos). PK natural — identificador único nacional.';
 COMMENT ON COLUMN nota_fiscal.b01_ide.xml_id        IS 'Referência ao ID do XML original importado (campo legado, sem FK formal).';
-COMMENT ON COLUMN nota_fiscal.b01_ide.cpf_cnpj      IS 'CPF ou CNPJ do emitente, somente dígitos.';
+COMMENT ON COLUMN nota_fiscal.b01_ide.cpf_cnpj      IS 'CPF (11 dígitos numéricos) ou CNPJ (14 caracteres alfanuméricos: 12 posições [0-9A-Z] + 2 verificadores) do emitente. Conforme IN RFB nº 2.229/2024.';
 COMMENT ON COLUMN nota_fiscal.b01_ide.ie            IS 'Inscrição Estadual do emitente.';
 COMMENT ON COLUMN nota_fiscal.b01_ide.num_doc       IS 'Número da nota fiscal (nNF), compõe a chave de acesso.';
 COMMENT ON COLUMN nota_fiscal.b01_ide.ser           IS 'Série da NF-e (1–3 dígitos).';
@@ -139,7 +139,7 @@ COMMENT ON COLUMN nota_fiscal.b01_ide.dh_emi        IS 'Data e hora de emissão 
 COMMENT ON COLUMN nota_fiscal.b01_ide.dh_sai_ent    IS 'Data e hora de saída ou entrada da mercadoria.';
 COMMENT ON COLUMN nota_fiscal.b01_ide.dh_cont       IS 'Data e hora de entrada em contingência.';
 COMMENT ON COLUMN nota_fiscal.b01_ide.x_just        IS 'Justificativa de entrada em contingência (mín. 15 caracteres).';
-COMMENT ON COLUMN nota_fiscal.b01_ide.dest_cpf_cnpj IS 'CPF ou CNPJ do destinatário, somente dígitos.';
+COMMENT ON COLUMN nota_fiscal.b01_ide.dest_cpf_cnpj IS 'CPF (11 dígitos numéricos) ou CNPJ (14 caracteres alfanuméricos: 12 posições [0-9A-Z] + 2 verificadores) do destinatário. Conforme IN RFB nº 2.229/2024.';
 COMMENT ON COLUMN nota_fiscal.b01_ide.dest_ie       IS 'Inscrição Estadual do destinatário.';
 COMMENT ON COLUMN nota_fiscal.b01_ide.created_at    IS 'Timestamp de importação do registro no banco.';
 COMMENT ON COLUMN nota_fiscal.b01_ide.updated_at    IS 'Timestamp da última atualização do registro.';

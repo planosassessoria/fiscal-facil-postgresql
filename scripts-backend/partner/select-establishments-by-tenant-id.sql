@@ -11,7 +11,8 @@
 --   $2 - is_root (BOOLEAN) - Se o usuário é root
 --
 -- Retorno: est_id, document, razao_social, display_name, fantasia,
---          telefone, email, uf, situacao, tenant_id, has_tenant, rows_number
+--          telefone, email, uf, situacao, tenant_id, account_type,
+--          has_tenant, rows_number
 -- ============================================================================
 SELECT
     e.est_id,
@@ -24,6 +25,7 @@ SELECT
     e.uf,
     e.situacao,
     t.tenant_id,
+    t.account_type,
     (t.tenant_id IS NOT NULL) AS has_tenant,
     COUNT(*) OVER () AS rows_number
 FROM partner.establishments e

@@ -15,4 +15,4 @@
 SELECT xml.fn_destructure_xml_to_nota_fiscal_record(
 	$1,
 	$2
-);
+) AS result;

@@ -6,16 +6,16 @@
 --            - Controle RBAC (root vê todos, demais vêem só seu tenant)
 --            - Busca textual via Full Text Search (FTS)
 --            - Paginação dinâmica (LIMIT/OFFSET)
---            - Ordenação dinâmica (via %I %s)
+--            - Ordenação dinâmica (via pg_format)
 --
 -- Parâmetros:
 --   $1 - is_root (BOOLEAN) - Se o usuário requisitante é root
 --   $2 - tenant_id (UUID) - ID do tenant para filtro de segurança
 --   $3 - search_query (TEXT) - Termo de busca FTS (NULL = sem filtro)
---   %I - Coluna de ordenação (interpolado via pg_format)
---   %s - Direção da ordenação ASC/DESC (interpolado via pg_format)
---   %L - LIMIT (interpolado via pg_format)
---   %L - OFFSET (interpolado via pg_format)
+--   [col] - Coluna de ordenação (interpolado via pg_format com %%I)
+--   [dir] - Direção da ordenação ASC/DESC (interpolado via pg_format com %%s)
+--   [limit] - LIMIT (interpolado via pg_format com %%L)
+--   [offset] - OFFSET (interpolado via pg_format com %%L)
 --
 -- Retorno: Lista de usuários com tenant_id, role, status e rows_number
 -- ============================================================================
