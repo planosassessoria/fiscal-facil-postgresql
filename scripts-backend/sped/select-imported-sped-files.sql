@@ -10,6 +10,7 @@
 --   $1 - is_root (BOOLEAN)  - Root vê todos os tenants
 --   $2 - tenant_id (UUID)   - Filtro de segurança por tenant
 --   $3 - est_id (UUID)      - Filtro opcional por estabelecimento
+--   $4 - search_query (TEXT) - Termo de busca FTS (NULL = sem filtro)
 --   Coluna de ordenação     (interpolado via pg_format)
 --   Direção da ordenação    (interpolado via pg_format)
 --   LIMIT                   (interpolado via pg_format)
@@ -79,6 +80,10 @@ LEFT JOIN LATERAL (
     LIMIT 1
 ) tlast ON TRUE
 WHERE f.imported_at IS NOT NULL
+  AND (
+    $4::text IS NULL
+    OR f.sped_file_fts @@ to_tsquery('public.simple_portuguese', public.fn_format_tsquery($4::text))
+  )
 ORDER BY %I %s
 LIMIT %L
 OFFSET %L;

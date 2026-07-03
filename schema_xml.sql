@@ -65,6 +65,53 @@ ALTER FUNCTION xml.fn_update_job_fts() OWNER TO dorcilio;
 COMMENT ON FUNCTION xml.fn_update_job_fts() IS
     'Atualiza o vetor FTS de import_job. Pesos: file_name e cpf_cnpj = A; user_email, job_type e job_status = B.';
 
+-- Atualiza o vetor FTS do xml_storage com documentos e representacoes de periodo.
+CREATE OR REPLACE FUNCTION xml.fn_update_xml_storage_fts()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_month_name_pt text;
+    v_period_mm_yyyy text;
+    v_period_month_year text;
+BEGIN
+    v_month_name_pt := CASE NEW.emission_month
+        WHEN 1 THEN 'janeiro'
+        WHEN 2 THEN 'fevereiro'
+        WHEN 3 THEN 'marco'
+        WHEN 4 THEN 'abril'
+        WHEN 5 THEN 'maio'
+        WHEN 6 THEN 'junho'
+        WHEN 7 THEN 'julho'
+        WHEN 8 THEN 'agosto'
+        WHEN 9 THEN 'setembro'
+        WHEN 10 THEN 'outubro'
+        WHEN 11 THEN 'novembro'
+        WHEN 12 THEN 'dezembro'
+    END;
+
+    v_period_mm_yyyy := LPAD(NEW.emission_month::text, 2, '0') || '/' || NEW.emission_year::text;
+    v_period_month_year := v_month_name_pt || ' ' || NEW.emission_year::text;
+
+    NEW.xml_storage_fts :=
+        setweight(to_tsvector('public.simple_portuguese', COALESCE(NEW.ch_nf, '')), 'A') ||
+        setweight(to_tsvector('public.simple_portuguese', COALESCE(NEW.cpf_cnpj, '')), 'A') ||
+        setweight(to_tsvector('public.simple_portuguese', COALESCE(v_period_mm_yyyy, '')), 'A') ||
+        setweight(to_tsvector('public.simple_portuguese', COALESCE(v_period_month_year, '')), 'A') ||
+        setweight(to_tsvector('public.simple_portuguese', COALESCE(NEW.dest_cpf_cnpj, '')), 'B') ||
+        setweight(to_tsvector('public.simple_portuguese', COALESCE(NEW.ie, '')), 'B') ||
+        setweight(to_tsvector('public.simple_portuguese', COALESCE(NEW.dest_ie, '')), 'B') ||
+        setweight(to_tsvector('public.simple_portuguese', COALESCE(v_month_name_pt, '')), 'B') ||
+        setweight(to_tsvector('public.simple_portuguese', COALESCE(NEW.emission_year::text || '-' || LPAD(NEW.emission_month::text, 2, '0') || '-01', '')), 'C');
+
+    RETURN NEW;
+END;
+$$;
+
+ALTER FUNCTION xml.fn_update_xml_storage_fts() OWNER TO dorcilio;
+COMMENT ON FUNCTION xml.fn_update_xml_storage_fts() IS
+    'Atualiza o vetor FTS de xml.xml_storage. Pesos: ch_nf, cpf_cnpj, MM/YYYY e mes+ano = A; dest_cpf_cnpj, ie, dest_ie e mes = B; YYYY-MM-01 = C.';
+
 -- emission_year e emission_month são calculados inline em xml.fn_validate_and_store_xml
 -- durante o INSERT, evitando o erro do PostgreSQL:
 --   "moving row to another partition during a BEFORE FOR EACH ROW trigger is not supported"
@@ -107,6 +154,9 @@ CREATE TABLE IF NOT EXISTS xml.xml_storage (
 
     -- Rastreabilidade da importação (sem FK — import_job tem TTL e pode ser excluído)
     import_job_id       UUID,
+
+    -- Full Text Search
+    xml_storage_fts     TSVECTOR,
 
     -- Timestamp de armazenamento (sem updated_at — tabela append-only)
     created_at          TIMESTAMPTZ     NOT NULL DEFAULT clock_timestamp(),
@@ -168,6 +218,9 @@ COMMENT ON COLUMN xml.xml_storage.import_job_id IS
     'UUID do import_job que originou este registro, para rastreabilidade. '
     'Sem FK — import_job tem TTL e pode ser excluído sem afetar xml_storage.';
 
+COMMENT ON COLUMN xml.xml_storage.xml_storage_fts IS
+    'Vetor FTS para busca por chave, documentos e periodo de emissao (MM/YYYY, mes, mes+ano).';
+
 COMMENT ON COLUMN xml.xml_storage.created_at IS
     'Timestamp de armazenamento do XML no repositório (instante da inserção).';
 
@@ -227,8 +280,18 @@ CREATE INDEX IF NOT EXISTS idx_xml_storage_dest_period
     ON xml.xml_storage (dest_cpf_cnpj, emission_year, emission_month)
     WHERE dest_cpf_cnpj IS NOT NULL;
 
+-- Busca textual por chave/documentos/periodo de emissao no xml_storage.
+CREATE INDEX IF NOT EXISTS idx_xml_storage_fts
+    ON xml.xml_storage USING GIN (xml_storage_fts);
+
 -- Trigger tr_set_xml_storage_emission_year removido.
 -- emission_year e emission_month são fornecidos diretamente por xml.fn_validate_and_store_xml.
+
+CREATE TRIGGER tr_fts_xml_storage
+    BEFORE INSERT OR UPDATE OF ch_nf, cpf_cnpj, ie, dest_cpf_cnpj, dest_ie, emission_year, emission_month
+    ON xml.xml_storage
+    FOR EACH ROW
+    EXECUTE FUNCTION xml.fn_update_xml_storage_fts();
 
 -- -----------------------------------------------------------------------------
 -- 3. TABELA: xml.import_job
