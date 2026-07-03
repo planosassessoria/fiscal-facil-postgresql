@@ -11,6 +11,7 @@ Repositório oficial de scripts SQL do banco de dados do **Fiscal Fácil**, um s
 - [Estrutura do Repositório](#estrutura-do-repositório)
 - [Schemas](#schemas)
 - [Como Aplicar os Scripts](#como-aplicar-os-scripts)
+- [Guia Prático para DBA em `scripts-backend`](#guia-prático-para-dba-em-scripts-backend)
 - [Guia de Nomenclatura de Arquivos](#guia-de-nomenclatura-de-arquivos)
 - [Guia de Comentários em SQL](#guia-de-comentários-em-sql)
 - [Convenções Adotadas](#convenções-adotadas)
@@ -48,18 +49,25 @@ fiscal-facil-postgresql/
 ├── schema_account.sql          # IAM: usuários, sessões, roles e permissões (RBAC)
 ├── schema_partner.sql          # Parceiros: estabelecimentos, endereços e CNAEs
 ├── schema_nota_fiscal.sql      # NF-e / NFC-e: estrutura principal das notas fiscais
+├── schema_notification.sql     # Notificações persistidas e em tempo real
 ├── schema_history.sql          # Auditoria e histórico de eventos (roadmap)
 ├── schema_socket.sql           # Comunicação em tempo real via WebSocket
+├── schema_sped.sql             # SPED Fiscal: ingestão, jobs, estágios e timeline
 ├── schema_xml.sql              # Armazenamento e processamento de XMLs fiscais
 │
 ├── functions/                  # Funções complexas de processamento
-│   └── validate_and_store_xml.sql
+│   ├── xml.fn_validate_and_store_xml.sql
+│   └── xml.fn_destructure_xml_to_nota_fiscal_record.sql
 │
 ├── scripts-backend/            # Scripts parametrizados consumidos pela API
 │   ├── account/                # Operações de usuários, sessões e permissões
 │   ├── common/                 # Saúde e métricas do banco
 │   ├── history/                # Registro de eventos
-│   └── partner/                # Estabelecimentos e entidades fiscais
+│   ├── nota-fiscal/            # Consultas do domínio de notas fiscais
+│   ├── notification/           # Notificações e destinatários
+│   ├── partner/                # Estabelecimentos e entidades fiscais
+│   ├── sped/                   # Rotinas e consultas do módulo SPED
+│   └── xml/                    # Rotinas auxiliares relacionadas ao XML
 │
 └── manuais_e_notas_tecnicas/   # PDFs de referência (SPED, NF-e, IBS/CBS/IS)
 ```
@@ -73,9 +81,11 @@ fiscal-facil-postgresql/
 | `public`  | Extensões (`unaccent`), configuração FTS `simple_portuguese` e funções utilitárias globais |
 | `account` | Gestão de identidade e acesso (IAM): usuários, sessões, roles e RBAC         |
 | `partner` | Estabelecimentos (CNPJ/CPF), endereços, tenants, entidades fiscais e CNAEs   |
-| `nota_fiscal`     | Estrutura de NF-e e NFC-e: cabeçalho, itens e totais das notas fiscais       |
+| `nota_fiscal` | Estrutura de NF-e e NFC-e: cabeçalho, itens e totais das notas fiscais |
+| `notification` | Notificações do sistema, escopos de entrega e rastreio de leitura por usuário |
 | `history` | Auditoria e rastreabilidade de eventos do sistema                            |
 | `socket`  | Infraestrutura de comunicação em tempo real                                   |
+| `sped` | SPED Fiscal: arquivos, registros, jobs/protocolos, estágios e timeline |
 | `xml`     | Armazenamento, validação e processamento de XMLs fiscais (NF-e / NFC-e)      |
 
 ---
@@ -95,12 +105,14 @@ psql -U dorcilio -d fiscal_facil -f schema_account.sql
 psql -U dorcilio -d fiscal_facil -f schema_partner.sql
 psql -U dorcilio -d fiscal_facil -f schema_xml.sql
 psql -U dorcilio -d fiscal_facil -f schema_nota_fiscal.sql
+psql -U dorcilio -d fiscal_facil -f schema_notification.sql
 psql -U dorcilio -d fiscal_facil -f schema_history.sql
 psql -U dorcilio -d fiscal_facil -f schema_socket.sql
+psql -U dorcilio -d fiscal_facil -f schema_sped.sql
 
 # 3. Funções complexas de processamento
-psql -U dorcilio -d fiscal_facil -f functions/validate_and_store_xml.sql
-psql -U dorcilio -d fiscal_facil -f functions/desestructure_xml_and_insert_nf.sql
+psql -U dorcilio -d fiscal_facil -f functions/xml.fn_validate_and_store_xml.sql
+psql -U dorcilio -d fiscal_facil -f functions/xml.fn_destructure_xml_to_nota_fiscal_record.sql
 ```
 
 > **Atenção:** Nunca execute scripts diretamente em produção sem antes testar em ambiente de homologação e preparar o script de rollback correspondente.
@@ -108,6 +120,73 @@ psql -U dorcilio -d fiscal_facil -f functions/desestructure_xml_and_insert_nf.sq
 ### Scripts de backend
 
 Os scripts em `scripts-backend/` são parametrizados e destinados ao consumo pela API. Utilize seu driver de banco de dados para injetar os parâmetros nomeados (ex: `:est_id`, `:tenant_id`).
+
+---
+
+## Guia Prático para DBA em `scripts-backend`
+
+Esta seção serve como referência rápida para quando o DBA precisar criar scripts SQL consumidos por programadores backend.
+
+### Objetivo
+
+- Criar scripts SQL reutilizáveis, versionáveis e seguros para execução via API.
+- Padronizar contratos entre banco e backend (parâmetros, retorno, nomes e escopo).
+
+### Estrutura e escopo por pasta
+
+- `scripts-backend/account/`: IAM (usuários, sessões, permissões, roles).
+- `scripts-backend/partner/`: estabelecimentos, tenants e entidades fiscais.
+- `scripts-backend/nota-fiscal/`: consultas e operações relacionadas a NF-e/NFC-e.
+- `scripts-backend/notification/`: notificações e destinatários.
+- `scripts-backend/sped/`: rotinas e consultas operacionais do SPED.
+- `scripts-backend/xml/`: operações auxiliares ligadas a XML.
+- `scripts-backend/history/`: registro e consulta de eventos/auditoria de produto.
+- `scripts-backend/common/`: utilitários técnicos sem vínculo forte com um schema único.
+
+### Checklist obrigatório antes de entregar um script ao backend
+
+- Nome do arquivo em `kebab-case` no padrão `{operação}-{entidade}-{complemento}.sql`.
+- Cabeçalho com `OPERAÇÃO`, `ENTIDADE`, `DESCRIÇÃO`, `PARÂMETROS` e `RETORNO`.
+- Parâmetros nomeados e explícitos (ex: `:user_email`, `:tenant_id`, `:limit`, `:offset`).
+- Sem SQL dinâmico em string concatenada no arquivo.
+- Query idempotente quando aplicável e com filtros obrigatórios de segurança (tenant, usuário, escopo).
+- `SELECT` com colunas explícitas (evitar `SELECT *` para contrato estável com a API).
+- Quando houver paginação, definir ordenação determinística (`ORDER BY`) e, se necessário, `LIMIT/OFFSET`.
+- Compatível com transação controlada pelo backend (não iniciar/encerrar transação no arquivo).
+
+### Contrato DBA ↔ Backend
+
+- O script deve deixar claro quais parâmetros são obrigatórios e quais são opcionais.
+- Qualquer alteração de coluna retornada em `SELECT` deve ser tratada como mudança de contrato e comunicada ao time backend.
+- Scripts de `UPDATE`/`DELETE` devem documentar exatamente o critério de filtro para evitar impacto fora do escopo esperado.
+
+### Exemplo de esqueleto para novo script backend
+
+```sql
+-- =============================================================================
+-- OPERAÇÃO : SELECT
+-- ENTIDADE : account.users (account.users)
+-- DESCRIÇÃO: Busca usuários ativos por tenant com paginação.
+-- PARÂMETROS:
+--   :tenant_id UUID      Tenant obrigatório
+--   :limit     INTEGER   Quantidade máxima de linhas
+--   :offset    INTEGER   Deslocamento para paginação
+-- RETORNO  : user_id, email, account_type, created_at
+-- =============================================================================
+
+SELECT
+        u.user_id,
+        u.email,
+        u.account_type,
+        u.created_at
+FROM account.users u
+JOIN account.users_tenants ut
+    ON ut.user_email = u.email
+WHERE ut.tenant_id = :tenant_id
+ORDER BY u.created_at DESC, u.email ASC
+LIMIT :limit
+OFFSET :offset;
+```
 
 ---
 
@@ -178,9 +257,12 @@ Cada subdiretório em `scripts-backend/` corresponde a um domínio do sistema. C
 scripts-backend/
 ├── account/       → schema account (IAM)
 ├── partner/       → schema partner (estabelecimentos)
+├── notification/  → schema notification (notificações)
+├── sped/          → schema sped (SPED fiscal)
+├── xml/           → schema xml (operações auxiliares de XML)
 ├── history/       → schema history (eventos)
 ├── common/        → utilitários sem schema fixo
-└── nota_fiscal/           → schema nfe (notas fiscais) — exemplo de novo domínio
+└── nota-fiscal/   → consultas e operações de notas fiscais
 ```
 
 ### Schemas e funções complexas
