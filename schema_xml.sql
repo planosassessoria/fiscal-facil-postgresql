@@ -147,14 +147,15 @@ COMMENT ON COLUMN xml.xml_storage.ch_nf IS
     'A unicidade em xml_storage é garantida pelo UNIQUE (ch_nf, emission_year).';
 
 COMMENT ON COLUMN xml.xml_storage.cpf_cnpj IS
-    'CPF ou CNPJ do emitente, somente dígitos, sem formatação.';
+    'CPF (11 dígitos numéricos) ou CNPJ (14 caracteres alfanuméricos: 12 posições [0-9A-Z] + 2 verificadores) do emitente. '
+    'Conforme IN RFB nº 2.229/2024, novos CNPJs podem conter letras maiúsculas.';
 
 COMMENT ON COLUMN xml.xml_storage.ie IS
     'Inscrição Estadual do emitente.';
 
 COMMENT ON COLUMN xml.xml_storage.dest_cpf_cnpj IS
-    'CPF ou CNPJ do destinatário, somente dígitos. '
-    'Pode ser NULL em operações sem identificação de destinatário.';
+    'CPF (11 dígitos numéricos) ou CNPJ (14 caracteres alfanuméricos: 12 posições [0-9A-Z] + 2 verificadores) do destinatário. '
+    'Conforme IN RFB nº 2.229/2024. Pode ser NULL em operações sem identificação de destinatário.';
 
 COMMENT ON COLUMN xml.xml_storage.dest_ie IS
     'Inscrição Estadual do destinatário.';

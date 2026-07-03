@@ -13,56 +13,10 @@ ALTER SCHEMA sped OWNER TO dorcilio;
 
 COMMENT ON SCHEMA sped IS
     'Schema do módulo SPED Fiscal (EFD ICMS/IPI). Contém armazenamento de linhas do SPED em JSONB, '
-    'controle de jobs/protocolos e trilha de execução para importação, auditoria, correções, exportação e transmissão.';
+    'controle operacional de jobs/protocolos (importação, auditoria, exportação, transmissão) e timeline simples de status.'
 
 -- -----------------------------------------------------------------------------
--- 1. FUNÇÕES
--- -----------------------------------------------------------------------------
-
--- Valida consistência pai-filho dentro de um arquivo SPED:
--- 1) o registro pai deve existir
--- 2) o registro pai deve pertencer ao mesmo arquivo
--- 3) a line_number do pai deve ser menor que a line_number do filho
-CREATE OR REPLACE FUNCTION sped.fn_validate_sped_record_parent()
-RETURNS trigger AS $$
-DECLARE
-    v_parent_sped_file_id BIGINT;
-    v_parent_line_number INTEGER;
-BEGIN
-    IF NEW.parent_sped_record_id IS NULL THEN
-        RETURN NEW;
-    END IF;
-
-    SELECT r.sped_file_id, r.line_number
-      INTO v_parent_sped_file_id, v_parent_line_number
-      FROM sped.sped_records r
-     WHERE r.sped_record_id = NEW.parent_sped_record_id;
-
-    IF v_parent_sped_file_id IS NULL THEN
-        RAISE EXCEPTION 'Registro pai (%) não foi encontrado.', NEW.parent_sped_record_id;
-    END IF;
-
-    IF v_parent_sped_file_id <> NEW.sped_file_id THEN
-        RAISE EXCEPTION
-            'Registro pai (%) pertence ao sped_file_id %, diferente do sped_file_id %.',
-            NEW.parent_sped_record_id, v_parent_sped_file_id, NEW.sped_file_id;
-    END IF;
-
-    IF v_parent_line_number >= NEW.line_number THEN
-        RAISE EXCEPTION
-            'Ordem física inválida: registro pai (%) linha % deve vir antes da linha %.',
-            NEW.parent_sped_record_id, v_parent_line_number, NEW.line_number;
-    END IF;
-
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-COMMENT ON FUNCTION sped.fn_validate_sped_record_parent() IS
-    'Valida integridade hierárquica em sped.sped_records: mesmo sped_file_id e ordem física de linhas (pai antes do filho).';
-
--- -----------------------------------------------------------------------------
--- 2. TABELAS
+-- 1. TABELAS
 -- -----------------------------------------------------------------------------
 
 -- Metadados do arquivo de origem (sem status de processamento)
@@ -80,7 +34,7 @@ CREATE TABLE IF NOT EXISTS sped.sped_files (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
 
     CONSTRAINT sped_files_pkey PRIMARY KEY (sped_file_id),
-    CONSTRAINT ck_sped_files_document_numeric CHECK (document ~ '^([0-9]{11}|[0-9]{14})$'),
+    CONSTRAINT ck_sped_files_document_numeric CHECK (document ~ '^([0-9]{11}|[0-9A-Z]{12}[0-9]{2})$'),
     CONSTRAINT ck_sped_files_total_lines_non_negative CHECK (
         total_lines IS NULL OR total_lines >= 0
     ),
@@ -94,7 +48,9 @@ COMMENT ON TABLE sped.sped_files IS
 COMMENT ON COLUMN sped.sped_files.sped_file_id IS
     'Identificador interno do arquivo SPED importado.';
 COMMENT ON COLUMN sped.sped_files.document IS
-    'Documento do declarante (CPF ou CNPJ, somente dígitos).';
+    'Documento do declarante: CPF (11 dígitos numéricos) ou CNPJ (14 caracteres — '
+    '12 posições alfanuméricas [0-9A-Z] + 2 dígitos verificadores numéricos). '
+    'Conforme IN RFB nº 2.229/2024, novos CNPJs podem conter letras maiúsculas a partir de jul/2026.';
 COMMENT ON COLUMN sped.sped_files.ie IS
     'Inscrição Estadual do declarante, quando aplicável.';
 COMMENT ON COLUMN sped.sped_files.reference_period IS
@@ -328,53 +284,90 @@ COMMENT ON COLUMN sped.sped_job_stages.created_at IS
 COMMENT ON COLUMN sped.sped_job_stages.updated_at IS
     'Timestamp da última atualização.';
 
--- Timeline de eventos atômicos por protocolo/job
-CREATE TABLE IF NOT EXISTS sped.sped_job_events (
-    sped_job_event_id BIGSERIAL NOT NULL,
-    sped_job_id BIGINT NOT NULL,
-    event_code VARCHAR(80) NOT NULL,
-    event_title VARCHAR(160) NOT NULL,
-    event_description TEXT,
-    previous_workflow_status VARCHAR(40),
-    new_workflow_status VARCHAR(40),
-    created_by_email VARCHAR(320),
-    event_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+-- Catálogo de status possíveis para o roadmap de SPED (controle centralizado)
+CREATE TABLE IF NOT EXISTS sped.sped_job_status_types (
+    status_id SMALLINT GENERATED ALWAYS AS IDENTITY NOT NULL,
+    status_code VARCHAR(60) NOT NULL UNIQUE,
+    status_label_pt VARCHAR(160) NOT NULL,
+    is_system BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
 
-    CONSTRAINT sped_job_events_pkey PRIMARY KEY (sped_job_event_id),
-    CONSTRAINT fk_sped_job_events_job FOREIGN KEY (sped_job_id)
-        REFERENCES sped.sped_jobs(sped_job_id) ON DELETE CASCADE,
-    CONSTRAINT fk_sped_job_events_created_by FOREIGN KEY (created_by_email)
-        REFERENCES account.users(email) ON DELETE SET NULL
+    CONSTRAINT sped_job_status_types_pkey PRIMARY KEY (status_id),
+    CONSTRAINT ck_sped_job_status_code CHECK (status_code ~ '^[A-Z_0-9]+$')
 );
 
-ALTER TABLE sped.sped_job_events OWNER TO dorcilio;
+ALTER TABLE sped.sped_job_status_types OWNER TO dorcilio;
 
-COMMENT ON TABLE sped.sped_job_events IS
-    'Timeline orientada a append de eventos operacionais de cada protocolo/job SPED (roadmap/histórico).';
-COMMENT ON COLUMN sped.sped_job_events.sped_job_event_id IS
-    'Identificador interno do evento do job.';
-COMMENT ON COLUMN sped.sped_job_events.sped_job_id IS
-    'Job/protocolo SPED relacionado.';
-COMMENT ON COLUMN sped.sped_job_events.event_code IS
-    'Chave de evento legível por máquina (exemplo: FILE_IMPORTED, AUDIT_PRODUCTS_COMPLETED, FILE_EXPORTED).';
-COMMENT ON COLUMN sped.sped_job_events.event_title IS
-    'Título exibido ao usuário na timeline.';
-COMMENT ON COLUMN sped.sped_job_events.event_description IS
-    'Descrição detalhada do evento para auditoria e suporte.';
-COMMENT ON COLUMN sped.sped_job_events.previous_workflow_status IS
-    'Status do workflow antes deste evento, quando aplicável.';
-COMMENT ON COLUMN sped.sped_job_events.new_workflow_status IS
-    'Status do workflow após este evento, quando aplicável.';
-COMMENT ON COLUMN sped.sped_job_events.created_by_email IS
-    'Usuário que disparou o evento. NULL quando gerado pelo sistema.';
-COMMENT ON COLUMN sped.sped_job_events.event_payload IS
-    'Structured event metadata and contextual details in JSON.';
-COMMENT ON COLUMN sped.sped_job_events.created_at IS
-    'Timestamp de criação.';
-COMMENT ON COLUMN sped.sped_job_events.updated_at IS
-    'Timestamp da última atualização.';
+COMMENT ON TABLE sped.sped_job_status_types IS
+    'Catálogo centralizado de status que podem aparecer na timeline do roadmap de SPED. '
+    'Controla visibilidade e rótulos em português para exibição na interface.';
+COMMENT ON COLUMN sped.sped_job_status_types.status_id IS
+    'Identificador único do tipo de status (ex: 1=IMPORTED, 2=AUDIT_COMPLETED).';
+COMMENT ON COLUMN sped.sped_job_status_types.status_code IS
+    'Código legível por máquina em UPPER_SNAKE_CASE (ex: IMPORTED, AUDIT_COMPLETED, TRANSMITTED).';
+COMMENT ON COLUMN sped.sped_job_status_types.status_label_pt IS
+    'Rótulo em português brasileiro para exibição na interface (ex: "Importado", "Auditoria Concluída", "Transmitido").';
+COMMENT ON COLUMN sped.sped_job_status_types.is_system IS
+    'Se TRUE, o status é gerado automaticamente pelo sistema (importação, exportação, etc.) e não pode ser selecionado manualmente pelo contador. '
+    'Se FALSE, o contador pode adicionar este status manualmente na timeline do SPED.';
+COMMENT ON COLUMN sped.sped_job_status_types.created_at IS
+    'Timestamp de criação do registro de tipo de status.';
+
+-- Timeline simples: roadmap de quando cada status foi aplicado a uma declaração fiscal SPED
+-- Vinculada por (document, ie, reference_period) e não por sped_job_id,
+-- pois permite rastrear histórico mesmo se o SPED for deletado e reimportado
+CREATE TABLE IF NOT EXISTS sped.sped_job_timeline (
+    timeline_id BIGSERIAL NOT NULL,
+    document VARCHAR(14) NOT NULL,
+    ie VARCHAR(20),
+    reference_period DATE NOT NULL,
+    sped_job_id BIGINT,
+    status_id SMALLINT NOT NULL,
+    recorded_by_email VARCHAR(320),
+    notes TEXT,
+    recorded_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+
+    CONSTRAINT sped_job_timeline_pkey PRIMARY KEY (timeline_id),
+    CONSTRAINT fk_sped_job_timeline_job FOREIGN KEY (sped_job_id)
+        REFERENCES sped.sped_jobs(sped_job_id) ON DELETE SET NULL,
+    CONSTRAINT fk_sped_job_timeline_status FOREIGN KEY (status_id)
+        REFERENCES sped.sped_job_status_types(status_id) ON DELETE RESTRICT,
+    CONSTRAINT fk_sped_job_timeline_recorded_by FOREIGN KEY (recorded_by_email)
+        REFERENCES account.users(email) ON DELETE SET NULL,
+    CONSTRAINT ck_sped_job_timeline_document_numeric CHECK (document ~ '^([0-9]{11}|[0-9A-Z]{12}[0-9]{2})$')
+);
+
+ALTER TABLE sped.sped_job_timeline OWNER TO dorcilio;
+
+COMMENT ON TABLE sped.sped_job_timeline IS
+    'Timeline simples e permanente: roadmap de uma declaração fiscal SPED identificada por (document, ie, reference_period). '
+    'Preserva histórico mesmo se o arquivo for deletado e reimportado. '
+    'Registra cada mudança de status com quem fez, quando, e observações opcionais. '
+    'Append-only para auditoria completa do ciclo de vida da declaração.';
+COMMENT ON COLUMN sped.sped_job_timeline.timeline_id IS
+    'Identificador único do registro de timeline.';
+COMMENT ON COLUMN sped.sped_job_timeline.document IS
+    'Documento do declarante: CPF (11 dígitos numéricos) ou CNPJ (14 caracteres — '
+    '12 posições alfanuméricas [0-9A-Z] + 2 dígitos verificadores numéricos). '
+    'Conforme IN RFB nº 2.229/2024, novos CNPJs podem conter letras maiúsculas a partir de jul/2026. '
+    'Parte da chave de identificação da declaração.';
+COMMENT ON COLUMN sped.sped_job_timeline.ie IS
+    'Inscrição Estadual do declarante, quando aplicável. Parte da chave de identificação da declaração.';
+COMMENT ON COLUMN sped.sped_job_timeline.reference_period IS
+    'Período fiscal de referência (data). Parte da chave de identificação da declaração.';
+COMMENT ON COLUMN sped.sped_job_timeline.sped_job_id IS
+    'Job/protocolo SPED relacionado (opcional, pode ser NULL se o arquivo foi deletado e reimportado). Referencia qual importação gerou este status.';
+COMMENT ON COLUMN sped.sped_job_timeline.status_id IS
+    'Tipo de status aplicado (FK para sped_job_status_types).';
+COMMENT ON COLUMN sped.sped_job_timeline.recorded_by_email IS
+    'Usuário que registrou este status. NULL se gerado pelo sistema (ex: importação automática).';
+COMMENT ON COLUMN sped.sped_job_timeline.notes IS
+    'Observações opcionais livres (ex: "Auditado com sucesso", "Pendente revisão de ICMS").';
+COMMENT ON COLUMN sped.sped_job_timeline.recorded_at IS
+    'Data/hora em que o status foi efetivamente registrado/ocorreu.';
+COMMENT ON COLUMN sped.sped_job_timeline.created_at IS
+    'Timestamp de criação do registro na base (sempre >= recorded_at, para auditoria).';
 
 -- -----------------------------------------------------------------------------
 -- 3. ÍNDICES
@@ -440,11 +433,24 @@ CREATE INDEX IF NOT EXISTS idx_sped_job_stages_responsible_by
     WHERE responsible_by_email IS NOT NULL;
 
 -- Consultas de timeline
-CREATE INDEX IF NOT EXISTS idx_sped_job_events_job_date
-    ON sped.sped_job_events (sped_job_id, created_at DESC);
+-- Índices para timeline
+-- Índice principal: buscar timeline por declaração fiscal (document, ie, reference_period)
+CREATE INDEX IF NOT EXISTS idx_sped_job_timeline_declaration_date
+    ON sped.sped_job_timeline (document, ie, reference_period, recorded_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_sped_job_events_code_date
-    ON sped.sped_job_events (event_code, created_at DESC);
+-- Índice secundário: rastrear jobs específicos (quando disponível)
+CREATE INDEX IF NOT EXISTS idx_sped_job_timeline_job_date
+    ON sped.sped_job_timeline (sped_job_id, recorded_at DESC)
+    WHERE sped_job_id IS NOT NULL;
+
+-- Índice para análise de status
+CREATE INDEX IF NOT EXISTS idx_sped_job_timeline_status_date
+    ON sped.sped_job_timeline (status_id, recorded_at DESC);
+
+-- Índice para auditoria de quem registrou
+CREATE INDEX IF NOT EXISTS idx_sped_job_timeline_recorded_by
+    ON sped.sped_job_timeline (recorded_by_email, recorded_at DESC)
+    WHERE recorded_by_email IS NOT NULL;
 
 COMMENT ON INDEX sped.idx_sped_records_file_record_line IS
     'Acelera varredura de registros SPED por arquivo, tipo de registro e ordem física.';
@@ -460,8 +466,14 @@ COMMENT ON INDEX sped.idx_sped_records_payload_gin IS
     'Índice GIN para predicados dinâmicos em JSONB sobre payload de registros SPED.';
 COMMENT ON INDEX sped.idx_sped_jobs_status_updated IS
     'Otimiza dashboards operacionais por status de workflow e atividade recente.';
-COMMENT ON INDEX sped.idx_sped_job_events_job_date IS
-    'Otimiza renderização de timeline para cada protocolo/job SPED.';
+COMMENT ON INDEX sped.idx_sped_job_timeline_declaration_date IS
+    'Índice principal: otimiza busca de timeline por declaração fiscal (document, ie, reference_period), ordenada por data recente.';
+COMMENT ON INDEX sped.idx_sped_job_timeline_job_date IS
+    'Índice secundário: rastreia timeline por job específico quando disponível (sped_job_id não é NULL).';
+COMMENT ON INDEX sped.idx_sped_job_timeline_status_date IS
+    'Otimiza análise de quando cada status foi atingido no histórico geral.';
+COMMENT ON INDEX sped.idx_sped_job_timeline_recorded_by IS
+    'Otimiza auditoria de quem registrou cada status.';
 
 -- -----------------------------------------------------------------------------
 -- 4. TRIGGERS
@@ -487,13 +499,12 @@ CREATE TRIGGER tr_upd_sped_job_stages
     FOR EACH ROW
     EXECUTE FUNCTION public.fn_update_timestamp();
 
-CREATE TRIGGER tr_upd_sped_job_events
-    BEFORE UPDATE ON sped.sped_job_events
+CREATE TRIGGER tr_upd_sped_job_status_types
+    BEFORE UPDATE ON sped.sped_job_status_types
     FOR EACH ROW
     EXECUTE FUNCTION public.fn_update_timestamp();
 
-CREATE TRIGGER tr_validate_sped_record_parent
-    BEFORE INSERT OR UPDATE OF sped_file_id, parent_sped_record_id, line_number
-    ON sped.sped_records
+CREATE TRIGGER tr_upd_sped_job_timeline
+    BEFORE UPDATE ON sped.sped_job_timeline
     FOR EACH ROW
-    EXECUTE FUNCTION sped.fn_validate_sped_record_parent();
+    EXECUTE FUNCTION public.fn_update_timestamp();
