@@ -1,7 +1,7 @@
 -- =============================================================================
 -- SCHEMA: history
 -- PROJETO: Fiscal Fácil
--- DATA: 2026-03-17
+-- DATA: 2026-08-20
 -- DESCRIÇÃO: Repositório central de logs, auditoria e eventos (Roadmap).
 -- =============================================================================
 
@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS history.roadmap_events (
     payload_before jsonb,
     payload_after jsonb,
     metadata jsonb,
+    redirect_url character varying(2048),
     created_at timestamp with time zone DEFAULT clock_timestamp(),
     event_scope character varying(20) NOT NULL,
 
@@ -57,6 +58,7 @@ COMMENT ON COLUMN history.roadmap_events.description IS 'Texto humanizado descre
 COMMENT ON COLUMN history.roadmap_events.payload_before IS 'Estado anterior do dado em formato JSON. Fundamental para "Undo" e auditoria.';
 COMMENT ON COLUMN history.roadmap_events.payload_after IS 'Captura de tela dos dados após a alteração.';
 COMMENT ON COLUMN history.roadmap_events.metadata IS 'Informações de contexto: { "ip": "1.1.1.1", "os": "Windows", "browser": "Chrome" }.';
+COMMENT ON COLUMN history.roadmap_events.redirect_url IS 'URL de redirecionamento ao clicar no evento. Pode ser rota interna (/nfe/123) ou externa (https://...). Nulo quando o evento não possui recurso navegável associado.';
 COMMENT ON COLUMN history.roadmap_events.event_scope IS 'USER: Ações de conta. TENANT: Ações em empresas. SYSTEM: Robôs/Sincronização. PARTNER: Ações do escritório sobre parceiros.';
 COMMENT ON COLUMN history.roadmap_events.created_at IS 'Data e hora exata da ocorrência do evento.';
 
@@ -81,6 +83,9 @@ CREATE INDEX IF NOT EXISTS idx_history_tenant_date ON history.roadmap_events USI
 
 -- Otimizado para Timeline do Usuário (exibe "Minhas Atividades")
 CREATE INDEX IF NOT EXISTS idx_history_user_date ON history.roadmap_events USING btree (user_email, created_at DESC);
+
+-- Índice parcial para eventos com URL de redirecionamento (timeline clicável)
+CREATE INDEX IF NOT EXISTS idx_history_has_redirect ON history.roadmap_events (event_id) WHERE (redirect_url IS NOT NULL);
 
 -- -----------------------------------------------------------------------------
 -- 4. CONSTRAINTS
