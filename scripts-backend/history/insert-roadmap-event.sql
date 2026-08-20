@@ -18,6 +18,7 @@
 --   $9  - payload_after (JSONB) - Estado posterior dos dados (NULL se exclusão)
 --   $10 - metadata (JSONB) - Metadados adicionais (IP, user-agent, etc.)
 --   $11 - event_scope (VARCHAR) - Escopo do evento (TENANT, SYSTEM)
+--   $12 - redirect_url (VARCHAR) - URL de redirecionamento ao clicar no evento (pode ser NULL)
 --
 -- Retorno: Nenhum
 -- ============================================================================
@@ -32,7 +33,8 @@ INSERT INTO history.roadmap_events (
 	payload_before,
 	payload_after,
 	metadata,
-	event_scope
+	event_scope,
+	redirect_url
 )
 VALUES (
 	$1,
@@ -45,5 +47,6 @@ VALUES (
 	$8,
 	$9,
 	$10,
-	$11
+	$11,
+	$12
 );
