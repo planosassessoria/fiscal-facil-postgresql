@@ -2,7 +2,7 @@
 
 **Sistema:** Fiscal Fácil
 **Módulo:** Simulador da Reforma Tributária (IBS / CBS / IS)
-**Data:** 14/09/2026
+**Data:** 15/09/2026
 **Público deste documento:** sócios e área tributária (linguagem de negócio, sem termos técnicos de programação)
 
 ---
