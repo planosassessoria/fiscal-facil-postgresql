@@ -124,17 +124,25 @@ Ambas as entregas ficam **prontas antes da vigência da reforma** (dezembro/2026
 
 ---
 
-## 7. Como vamos medir o andamento
+## 7. Como vamos acompanhar o andamento
 
-Para dar **transparência semanal** aos sócios, acompanhamos indicadores simples:
+Como a equipe é pequena, o acompanhamento é **leve e direto**, sem burocracia:
 
-| Indicador | O que mostra | Meta |
+- **Reunião semanal** de alinhamento (status, prioridades da semana e travas a resolver).
+- **Quadro no Trello** como fonte única: cada demanda é **cadastrada como card**, movida entre as colunas (A Fazer → Em Andamento → Revisão → Concluído) e **reportada** ali mesmo pelos responsáveis.
+- Na reunião semanal, revisamos o quadro do Trello e ajustamos o cronograma se necessário.
+
+Para dar **visibilidade aos sócios**, na reunião semanal olhamos alguns pontos simples a partir do próprio quadro:
+
+| O que olhamos | De onde vem | Para quê |
 |---|---|---|
-| % de etapas concluídas | Avanço frente ao cronograma | Em linha com o plano |
-| % de tabelas oficiais carregadas e conferidas | Maturidade da base tributária | 100% antes de liberar |
-| Cobertura de testes | Confiabilidade do cálculo | ≥ 70% no motor |
-| Tempo de resposta da simulação | Experiência do usuário | Abaixo de 1 segundo |
-| Itens revisados pela área tributária | Segurança fiscal | 100% antes de produção |
+| Cards concluídos na semana | Trello | Mostrar o avanço frente ao plano |
+| Cards travados/bloqueados | Trello | Identificar impedimentos cedo |
+| % de tabelas oficiais carregadas e conferidas | Checklist tributário | Maturidade da base fiscal |
+| Confiabilidade do cálculo | Testes do motor | Segurança dos números |
+| Itens revisados pela área tributária | Checklist tributário | Segurança fiscal antes de produção |
+
+> A qualquer momento, o Trello reflete o estado real do projeto — a reunião semanal serve para decidir prioridades e destravar, não para gerar relatórios manuais.
 
 ---
 
