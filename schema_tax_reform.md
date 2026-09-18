@@ -17,9 +17,10 @@ O desenho separa três responsabilidades:
 | Bloco | Tabelas | Papel |
 |-------|---------|-------|
 | **Referência tributária** | `cst`, `tax_classifications` | O "dicionário" de como cada situação é tributada (motor de alíquotas). |
-| **Catálogos de busca** | `ncms`, `products_ref` | Como localizar o item a partir de NCM ou código de barras. |
+| **Catálogos de busca** | `ncms`, `products_ref`, `nbs` | Como localizar o item a partir de NCM, código de barras ou NBS (serviços). |
 | **Regras e exceções** | `rules_and_exceptions`, `rule_targets` | Benefícios dos Anexos da LC 214/2025 (cesta básica, saúde, educação, etc.). |
-| **Transição temporal** | `transition_rates` | Alíquotas e fatores ano a ano (2026→2033+). |
+| **Imposto Seletivo** | `is_incidences` | Produtos sujeitos ao IS e respectiva alíquota (ad valorem ou específica). |
+| **Transição temporal** | `transition_rates` | Alíquotas e fatores ano a ano (2026→2033+), com abrangência nacional/UF/município. |
 | **Histórico** | `simulations`, `simulation_items` | Persistência auditável do "de/para" de cada simulação. |
 
 ### Diagrama de relacionamentos
@@ -28,6 +29,8 @@ O desenho separa três responsabilidades:
 erDiagram
     cst ||--o{ tax_classifications : classifica
     tax_classifications ||--o{ products_ref : "padrão"
+    tax_classifications ||--o{ ncms : "padrão (fallback)"
+    tax_classifications ||--o{ nbs : "padrão"
     ncms ||--o{ products_ref : referencia
     tax_classifications ||--o{ rules_and_exceptions : resulta
     cst ||--o{ rules_and_exceptions : associa
@@ -37,6 +40,7 @@ erDiagram
     cst ||--o{ simulation_items : aplica
     tax_classifications ||--o{ simulation_items : aplica
     rules_and_exceptions ||--o{ simulation_items : aplica
+    is_incidences ||--o{ simulation_items : "aplica IS"
 ```
 
 ---
@@ -59,6 +63,8 @@ erDiagram
 | `benefit_kind` | `INTEGRAL`, `REDUCED`, `ZERO`, `EXEMPT`, `IMMUNE`, `DEFERRED`, `SUSPENDED`, `MONOPHASIC`, `FIXED_RATE`, `SPECIFIC_REGIME` | Natureza do tratamento tributário. |
 | `rule_scope` | `NCM`, `NBS`, `LC116_ITEM`, `CEST`, `GTIN` | Por qual chave a regra é localizada. |
 | `match_kind` | `EXACT`, `PREFIX` | Estratégia de correspondência de código. |
+| `jurisdiction_kind` | `NATIONAL`, `STATE`, `MUNICIPAL` | Abrangência territorial de uma alíquota (destino do IBS). |
+| `is_rate_kind` | `AD_VALOREM`, `SPECIFIC` | Forma de cobrança do Imposto Seletivo. |
 | `simulation_kind` | `PRODUCT`, `INVOICE` | Modo da simulação. |
 | `simulation_status` | `DRAFT`, `COMPLETED`, `FAILED` | Estado da simulação. |
 
@@ -123,8 +129,11 @@ Base de busca por mercadoria (fonte: `IT2024.001 - Tabela NCM/uTrib`).
 | `ncm_description` | `TEXT` | Descrição oficial da mercadoria. |
 | `utrib_export_abbr` | `VARCHAR(10)` | Unidade tributável de exportação (ex.: `UN`). |
 | `utrib_export_description` | `VARCHAR(100)` | Descrição da unidade. |
+| `default_class_trib_code` **(FK)** | `VARCHAR(6)` | Classificação padrão do NCM (fallback quando não há produto/regra). |
 | `valid_from` / `valid_to` | `DATE` | Vigência do código. |
 | `ncm_fts` | `TSVECTOR` | Busca textual por código/descrição. |
+
+> **Cadeia de resolução da classificação:** `GTIN` (products_ref) → regra casada (rule_targets) → `ncms.default_class_trib_code` → fallback `INTEGRAL` (`000`/`000000`).
 
 ### 4.2 `products_ref` — Catálogo de Produtos (EAN/GTIN)
 
@@ -142,6 +151,20 @@ Liga o **código de barras** ao NCM e à classificação padrão, alimentando a 
 | `product_fts` | `TSVECTOR` | Busca por GTIN/descrição/NCM/CEST. |
 
 > **Nota de performance:** `ncm_code` é intencionalmente **desnormalizado** aqui (além do FK `ncm_id`) para permitir busca direta sem JOIN no caminho crítico do simulador.
+
+### 4.3 `nbs` — Catálogo de Serviços (NBS)
+
+Catálogo da Nomenclatura Brasileira de Serviços, correlacionado à lista de serviços da **LC 116** e à classificação padrão (fontes: `nbs.csv`, `AnexoVIII`, `LC 116`). Habilita o **simulador de serviços** (Fase 2 do planejamento).
+
+| Coluna | Tipo | Descrição |
+|--------|------|-----------|
+| `nbs_id` **(PK)** | `BIGINT` | Identificador interno. |
+| `nbs_code` **(UK)** | `VARCHAR(9)` | Código NBS de 9 dígitos (sem máscara). |
+| `nbs_description` | `TEXT` | Descrição oficial do serviço. |
+| `lc116_item` | `VARCHAR(10)` | Item correspondente da LC 116 (ex.: `0101`). |
+| `indop_code` | `VARCHAR(6)` | Indicador do local de incidência do IBS (ex.: `100301` = domicílio do adquirente). |
+| `default_class_trib_code` **(FK)** | `VARCHAR(6)` | Classificação tributária padrão do serviço. |
+| `nbs_fts` | `TSVECTOR` | Busca textual por código/descrição. |
 
 ---
 
@@ -185,7 +208,7 @@ Mapeia cada regra aos códigos que a acionam. O `match_type = PREFIX` cobre **fa
 
 ## 6. `transition_rates` — Alíquotas de Transição (2026→2033+)
 
-Parametriza a projeção gradual do novo modelo e a redução dos tributos antigos. **UK** por `(reference_year, tax_kind)`.
+Parametriza a projeção gradual do novo modelo e a redução dos tributos antigos. **UK** por `(reference_year, tax_kind, jurisdiction_scope, uf, ibge_city_code)` — permite uma alíquota nacional de referência e, no futuro, alíquotas específicas por UF/município sem quebrar a unicidade.
 
 | Coluna | Tipo | Descrição |
 |--------|------|-----------|
@@ -193,10 +216,15 @@ Parametriza a projeção gradual do novo modelo e a redução dos tributos antig
 | `reference_year` | `SMALLINT` | Ano (2026–2100). |
 | `tax_kind` | `new_tax_kind` | IBS estadual/municipal, CBS ou IS. |
 | `standard_rate` | `NUMERIC(15,4)` | Alíquota de referência do ano. |
+| `jurisdiction_scope` | `jurisdiction_kind` | `NATIONAL` (referência), `STATE` (por UF) ou `MUNICIPAL`. |
+| `uf` | `CHAR(2)` | UF do destino (nulo quando nacional). |
+| `ibge_city_code` | `VARCHAR(7)` | Código IBGE do município (nulo, exceto quando municipal). |
 | `legacy_icms_iss_factor` | `NUMERIC(15,4)` | Fração de ICMS/ISS ainda devida (`1`=integral, `0`=extinto). |
 | `legacy_pis_cofins_factor` | `NUMERIC(15,4)` | Fração de PIS/COFINS ainda devida. |
 | `phase_description` | `VARCHAR(255)` | Descrição da fase. |
 | `valid_from` / `valid_to` | `DATE` | Vigência. |
+
+> **Regra de consistência (`ck`):** `NATIONAL` exige `uf`/`ibge_city_code` nulos; `STATE` exige `uf`; `MUNICIPAL` exige `uf` **e** `ibge_city_code`.
 
 ### Cronograma de transição (referência para o seed)
 
@@ -209,6 +237,27 @@ Parametriza a projeção gradual do novo modelo e a redução dos tributos antig
 | 2033 | Modelo pleno | cheia | cheia | ICMS/ISS/PIS/COFINS extintos |
 
 > Referência total estimada do IBS+CBS ≈ **26,5%**. Os valores devem ser confirmados e populados via `seeds/` conforme regulamentação vigente.
+
+### 6.1 `is_incidences` — Imposto Seletivo (IS) por produto
+
+Mapeia os produtos sujeitos ao **Imposto Seletivo** e a alíquota aplicável. Sem registro correspondente, o IS do item é **zero**. O IS inicia em **2027**.
+
+| Coluna | Tipo | Descrição |
+|--------|------|-----------|
+| `is_incidence_id` **(PK)** | `BIGINT` | Identificador interno. |
+| `scope_type` | `rule_scope` | Tipo do código alvo (NCM/NBS/CEST/GTIN). |
+| `target_code` | `VARCHAR(30)` | Código que aciona o IS. |
+| `match_type` | `match_kind` | `EXACT` ou `PREFIX`. |
+| `description` | `VARCHAR(500)` | Produto/grupo sujeito ao IS. |
+| `rate_kind` | `is_rate_kind` | `AD_VALOREM` (%) ou `SPECIFIC` (R$/unidade). |
+| `ad_valorem_rate` | `NUMERIC(15,4)` | Alíquota percentual (fração) quando ad valorem. |
+| `specific_amount` | `NUMERIC(15,4)` | Valor por unidade quando específico. |
+| `unit_of_measure` | `VARCHAR(10)` | Unidade base do valor específico (ex.: `L`, `UN`). |
+| `reference_year` | `SMALLINT` | Ano de referência (opcional). |
+| `anexo_ref` / `legal_basis` | `VARCHAR/TEXT` | Origem normativa. |
+| `valid_from` / `valid_to` | `DATE` | Vigência (início padrão 2027-01-01). |
+
+> **Regra de consistência (`ck`):** `AD_VALOREM` exige `ad_valorem_rate` (0–1); `SPECIFIC` exige `specific_amount` (≥ 0).
 
 ---
 
@@ -231,6 +280,7 @@ Parametriza a projeção gradual do novo modelo e a redução dos tributos antig
 | `total_new_tax` | `NUMERIC(15,4)` | Total no novo regime. |
 | `total_difference` | `NUMERIC(15,4)` | Diferença (negativo = redução). |
 | `difference_percent` | `NUMERIC(15,4)` | Variação percentual. |
+| `error_reason` | `TEXT` | Motivo da falha quando `status = FAILED` (observabilidade). |
 
 ### 7.2 `simulation_items` — Detalhe "de/para"
 
@@ -241,7 +291,8 @@ O coração do comparativo. Guarda, por item, os tributos **antigos** e **novos*
 | **Identificação** | `simulation_item_id` (PK), `simulation_id` (FK), `item_sequence` | Chave e ordenação (UK por `simulation_id + item_sequence`). |
 | **Item** | `product_description`, `quantity`, `unit_value`, `item_value` | Dados do produto/serviço. |
 | **Classificação** | `gtin`, `ncm_code`, `cst_code` (FK), `class_trib_code` (FK), `applied_rule_id` (FK) | Como o item foi tributado. |
-| **Regime antigo** | `old_icms_value`, `old_pis_value`, `old_cofins_value`, `old_iss_value`, `old_total_tax` | Tributos atuais. |
+| **Rótulos do XML (atual)** | `old_origem_cst`, `old_cst_pis`, `old_cst_cofins`, `old_csosn` | CST/CSOSN lidos do XML — apenas contexto/auditoria, sem catálogo. |
+| **Regime antigo** | `old_icms_value`, `old_icms_st_value`, `old_pis_value`, `old_cofins_value`, `old_iss_value`, `old_total_tax` | Tributos atuais (inclui ICMS-ST para não subestimar o "antes"). |
 | **Regime novo** | `new_ibs_estadual_value`, `new_ibs_municipal_value`, `new_cbs_value`, `new_is_value`, `new_total_tax` | Tributos da reforma. |
 | **Comparativo** | `difference`, `comparison_payload` | Diferença e snapshot JSONB auditável. |
 
@@ -254,9 +305,12 @@ O coração do comparativo. Guarda, por item, os tributos **antigos** e **novos*
 | Índice | Objetivo |
 |--------|----------|
 | `idx_ncms_code`, `idx_ncms_code_prefix` (`text_pattern_ops`) | Busca exata e por prefixo (`LIKE '1006%'`). |
+| `idx_ncms_default_class_trib` (parcial) | Fallback de classificação por NCM. |
+| `idx_nbs_code`, `idx_nbs_lc116` | Busca de serviços por NBS/LC 116. |
 | `idx_products_ref_gtin`, `idx_products_ref_ncm_code` | Busca instantânea por código de barras/NCM. |
 | `idx_rule_targets_lookup` (`target_scope, target_code`) | Resolução rápida de regra aplicável ao item. |
-| `idx_transition_rates_year` | Carga das alíquotas do ano da simulação. |
+| `idx_is_incidences_lookup` (`scope_type, target_code`) | Resolução do IS aplicável ao item. |
+| `idx_transition_rates_year`, `idx_transition_rates_uf` (parcial) | Carga das alíquotas do ano/UF da simulação. |
 | `idx_simulations_access_key` (parcial) | Localizar simulação por chave da NF-e. |
 | GIN em `*_fts`, `indicators`, `conditions` | Busca textual e consultas em JSONB. |
 
@@ -264,9 +318,10 @@ O coração do comparativo. Guarda, por item, os tributos **antigos** e **novos*
 
 ## 9. Triggers
 
-- `public.fn_update_timestamp()` — atualiza `updated_at` em `cst`, `tax_classifications`, `ncms`, `products_ref`, `rules_and_exceptions`, `transition_rates`, `simulations`.
+- `public.fn_update_timestamp()` — atualiza `updated_at` em `cst`, `tax_classifications`, `ncms`, `products_ref`, `nbs`, `rules_and_exceptions`, `transition_rates`, `is_incidences`, `simulations`.
 - `tax_reform.fn_refresh_ncm_fts()` — recalcula `ncm_fts` em INSERT/UPDATE.
 - `tax_reform.fn_refresh_product_ref_fts()` — recalcula `product_fts` em INSERT/UPDATE.
+- `tax_reform.fn_refresh_nbs_fts()` — recalcula `nbs_fts` em INSERT/UPDATE.
 
 ---
 
@@ -277,11 +332,12 @@ flowchart TD
     A[Payload do frontend] --> B{simulation_type}
     B -->|PRODUCT| C[Localiza por GTIN/NCM em products_ref/ncms]
     B -->|INVOICE| D[Percorre itens da NF-e]
-    C --> E[Resolve classificação em tax_classifications]
+    C --> E[Resolve classificação: GTIN -> regra -> ncms.default -> INTEGRAL]
     D --> E
     E --> F[Verifica rules_and_exceptions via rule_targets]
-    F --> G[Aplica transition_rates do ano]
-    G --> H[Calcula antigo vs. novo por item]
-    H --> I[(Grava simulations + simulation_items)]
-    I --> J[Retorna comparativo Antes vs. Depois]
+    F --> G[Aplica transition_rates do ano e da jurisdição de destino]
+    G --> H[Verifica is_incidences para Imposto Seletivo]
+    H --> I[Calcula antigo vs. novo por item]
+    I --> J[(Grava simulations + simulation_items)]
+    J --> K[Retorna comparativo Antes vs. Depois]
 ```

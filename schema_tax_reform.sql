@@ -7,11 +7,13 @@
 --              1) Por Produto/Catálogo (EAN/GTIN + NCM);
 --              2) Por Nota Fiscal (comparativo "Antes vs. Depois" -
 --                 ICMS/PIS/COFINS/ISS x IBS/CBS/IS).
---            Consolida as tabelas de classificação (CST, cClassTrib), o
---            catálogo de NCM/uTrib, as regras/exceções dos Anexos da LC 214/25,
---            as alíquotas de transição (2026-2033) e o histórico de simulações.
+--            Consolida as tabelas de classificação (CST, cClassTrib), os
+--            catálogos de NCM/uTrib, produtos e NBS (serviços), as regras/
+--            exceções dos Anexos da LC 214/25, a incidência do Imposto Seletivo
+--            por produto, as alíquotas de transição (2026-2033, com abrangência
+--            nacional/UF/município) e o histórico de simulações.
 -- FONTES:    cClassTrib 2026-06-22; CST_INDICADORES; IT2024.001 (NCM/uTrib);
---            Anexos LC 214; AnexoVIII (NBS x cClassTrib); CFOP indExcIBSCBS.
+--            Anexos LC 214; AnexoVIII (NBS x cClassTrib); LC 116; CFOP indExcIBSCBS.
 -- =============================================================================
 
 CREATE SCHEMA IF NOT EXISTS tax_reform;
@@ -19,9 +21,10 @@ ALTER SCHEMA tax_reform OWNER TO dorcilio;
 
 COMMENT ON SCHEMA tax_reform IS
     'Módulo Simulador da Reforma Tributária (IBS/CBS/IS). Contém a base de '
-    'classificação tributária (CST/cClassTrib), catálogo de NCM e produtos '
-    '(EAN/GTIN), regras e exceções dos Anexos da LC 214/2025, alíquotas de '
-    'transição por ano e o histórico de simulações "Antes vs. Depois".';
+    'classificação tributária (CST/cClassTrib), catálogos de NCM, produtos '
+    '(EAN/GTIN) e NBS (serviços), regras e exceções dos Anexos da LC 214/2025, '
+    'a incidência do Imposto Seletivo por produto, alíquotas de transição por '
+    'ano (nacional/UF/município) e o histórico de simulações "Antes vs. Depois".';
 
 -- -----------------------------------------------------------------------------
 -- 1. TIPOS (ENUMS)
@@ -76,6 +79,19 @@ CREATE TYPE tax_reform.simulation_status AS ENUM (
     'FAILED'
 );
 
+-- Abrangência territorial de uma alíquota (destino do IBS).
+CREATE TYPE tax_reform.jurisdiction_kind AS ENUM (
+    'NATIONAL',   -- alíquota de referência nacional
+    'STATE',      -- alíquota específica por UF (parcela estadual do IBS)
+    'MUNICIPAL'   -- alíquota específica por município (parcela municipal do IBS)
+);
+
+-- Forma de cobrança do Imposto Seletivo (IS).
+CREATE TYPE tax_reform.is_rate_kind AS ENUM (
+    'AD_VALOREM',  -- percentual sobre o valor (ex.: 0.1000 = 10%)
+    'SPECIFIC'     -- valor fixo por unidade de medida (ad rem, ex.: R$/L)
+);
+
 -- -----------------------------------------------------------------------------
 -- 2. FUNÇÕES (FTS)
 -- -----------------------------------------------------------------------------
@@ -107,6 +123,19 @@ END; $$ LANGUAGE plpgsql;
 
 COMMENT ON FUNCTION tax_reform.fn_refresh_product_ref_fts() IS
     'Atualiza o vetor FTS de tax_reform.products_ref. Pesos: gtin/descrição = A, ncm = B, cest = C.';
+
+-- Atualiza o vetor FTS do catálogo de NBS (serviços).
+CREATE OR REPLACE FUNCTION tax_reform.fn_refresh_nbs_fts()
+RETURNS trigger AS $$
+BEGIN
+    NEW.nbs_fts :=
+        setweight(to_tsvector('public.simple_portuguese', unaccent(COALESCE(NEW.nbs_code, ''))), 'A') ||
+        setweight(to_tsvector('public.simple_portuguese', unaccent(COALESCE(NEW.nbs_description, ''))), 'B');
+    RETURN NEW;
+END; $$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION tax_reform.fn_refresh_nbs_fts() IS
+    'Atualiza o vetor FTS de tax_reform.nbs. Pesos: nbs_code = A, nbs_description = B.';
 
 -- -----------------------------------------------------------------------------
 -- 3. TABELAS DE REFERÊNCIA (CLASSIFICAÇÃO TRIBUTÁRIA)
@@ -237,6 +266,9 @@ CREATE TABLE tax_reform.ncms (
     utrib_export_abbr        VARCHAR(10),
     utrib_export_description VARCHAR(100),
 
+    -- Classificação tributária padrão do NCM (fallback do simulador)
+    default_class_trib_code  VARCHAR(6),
+
     -- Vigência
     valid_from               DATE,
     valid_to                 DATE,
@@ -250,6 +282,8 @@ CREATE TABLE tax_reform.ncms (
 
     -- Constraints
     CONSTRAINT uk_ncms_code UNIQUE (ncm_code),
+    CONSTRAINT fk_ncms_class_trib FOREIGN KEY (default_class_trib_code)
+        REFERENCES tax_reform.tax_classifications (class_trib_code) ON UPDATE CASCADE,
     CONSTRAINT ck_ncms_code_numeric CHECK (ncm_code ~ '^[0-9]{8}$')
 );
 
@@ -261,6 +295,7 @@ COMMENT ON COLUMN tax_reform.ncms.ncm_code IS 'Código NCM/SH de 8 dígitos sem 
 COMMENT ON COLUMN tax_reform.ncms.ncm_description IS 'Descrição oficial da mercadoria segundo a NCM/SH.';
 COMMENT ON COLUMN tax_reform.ncms.utrib_export_abbr IS 'Abreviatura da unidade tributável usada em exportação (ex.: UN, KG).';
 COMMENT ON COLUMN tax_reform.ncms.utrib_export_description IS 'Descrição da unidade tributável de exportação.';
+COMMENT ON COLUMN tax_reform.ncms.default_class_trib_code IS 'Classificação tributária padrão do NCM (fallback quando não há produto/regra específica).';
 COMMENT ON COLUMN tax_reform.ncms.valid_from IS 'Data de início de vigência do código NCM.';
 COMMENT ON COLUMN tax_reform.ncms.valid_to IS 'Data de fim de vigência do código NCM (nulo = vigente).';
 COMMENT ON COLUMN tax_reform.ncms.ncm_fts IS 'Vetor de busca textual para localização rápida por código ou descrição.';
@@ -311,6 +346,53 @@ COMMENT ON COLUMN tax_reform.products_ref.default_class_trib_code IS 'Classifica
 COMMENT ON COLUMN tax_reform.products_ref.product_fts IS 'Vetor de busca textual por GTIN, descrição, NCM ou CEST.';
 COMMENT ON COLUMN tax_reform.products_ref.created_at IS 'Data de criação do registro.';
 COMMENT ON COLUMN tax_reform.products_ref.updated_at IS 'Data da última alteração no registro.';
+
+-- 3.5. Catálogo de NBS (serviços) -> LC 116 -> classificação padrão.
+--      Fonte: nbs.csv / AnexoVIII (correlação NBS x cClassTrib) / LC 116.
+--      Habilita o modo de simulação de serviços (Fase 2 do planejamento).
+CREATE TABLE tax_reform.nbs (
+    -- Chaves
+    nbs_id                   BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+
+    -- Dados obrigatórios
+    nbs_code                 VARCHAR(9) NOT NULL,       -- NBS de 9 dígitos (sem máscara)
+    nbs_description          TEXT NOT NULL,
+
+    -- Correlação com a lista de serviços e classificação padrão
+    lc116_item               VARCHAR(10),               -- item da LC 116 (ex.: 0101)
+    indop_code               VARCHAR(6),                -- indicador de local de incidência (ex.: 100301)
+    default_class_trib_code  VARCHAR(6),
+
+    -- Vigência
+    valid_from               DATE,
+    valid_to                 DATE,
+
+    -- Busca
+    nbs_fts                  TSVECTOR,
+
+    -- Timestamps
+    created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    -- Constraints
+    CONSTRAINT uk_nbs_code UNIQUE (nbs_code),
+    CONSTRAINT fk_nbs_class_trib FOREIGN KEY (default_class_trib_code)
+        REFERENCES tax_reform.tax_classifications (class_trib_code) ON UPDATE CASCADE
+);
+
+COMMENT ON TABLE tax_reform.nbs IS
+    'Catálogo da Nomenclatura Brasileira de Serviços (NBS), correlacionado à lista '
+    'de serviços da LC 116 e à classificação tributária padrão. Chave de busca do '
+    'simulador de serviços.';
+COMMENT ON COLUMN tax_reform.nbs.nbs_id IS 'Identificador interno do NBS (BIGINT sequencial).';
+COMMENT ON COLUMN tax_reform.nbs.nbs_code IS 'Código NBS de 9 dígitos sem máscara.';
+COMMENT ON COLUMN tax_reform.nbs.nbs_description IS 'Descrição oficial do serviço segundo a NBS.';
+COMMENT ON COLUMN tax_reform.nbs.lc116_item IS 'Item correspondente da lista de serviços da LC 116 (ex.: 0101).';
+COMMENT ON COLUMN tax_reform.nbs.indop_code IS 'Indicador do local de incidência do IBS (ex.: 100301 = domicílio do adquirente).';
+COMMENT ON COLUMN tax_reform.nbs.default_class_trib_code IS 'Classificação tributária padrão do serviço (FK para tax_classifications).';
+COMMENT ON COLUMN tax_reform.nbs.nbs_fts IS 'Vetor de busca textual por código ou descrição do serviço.';
+COMMENT ON COLUMN tax_reform.nbs.created_at IS 'Data de criação do registro.';
+COMMENT ON COLUMN tax_reform.nbs.updated_at IS 'Data da última alteração no registro.';
 
 -- -----------------------------------------------------------------------------
 -- 4. REGRAS, EXCEÇÕES E ALVOS (ANEXOS LC 214/2025)
@@ -434,6 +516,11 @@ CREATE TABLE tax_reform.transition_rates (
     tax_kind                 tax_reform.new_tax_kind NOT NULL,
     standard_rate            NUMERIC(15,4) NOT NULL,    -- alíquota de referência
 
+    -- Abrangência territorial da alíquota (destino do IBS)
+    jurisdiction_scope       tax_reform.jurisdiction_kind NOT NULL DEFAULT 'NATIONAL',
+    uf                       CHAR(2),                   -- UF (parcela estadual do IBS)
+    ibge_city_code           VARCHAR(7),                -- código IBGE (parcela municipal)
+
     -- Fator de manutenção dos tributos antigos na transição
     -- (1.0000 = 100% do ICMS/ISS/PIS/COFINS ainda devido; 0.0000 = extinto)
     legacy_icms_iss_factor   NUMERIC(15,4) NOT NULL DEFAULT 1,
@@ -451,11 +538,15 @@ CREATE TABLE tax_reform.transition_rates (
     updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     -- Constraints
-    CONSTRAINT uk_transition_rates UNIQUE (reference_year, tax_kind),
     CONSTRAINT ck_transition_year CHECK (reference_year BETWEEN 2026 AND 2100),
     CONSTRAINT ck_transition_rate CHECK (standard_rate >= 0),
     CONSTRAINT ck_transition_legacy_icms CHECK (legacy_icms_iss_factor BETWEEN 0 AND 1),
-    CONSTRAINT ck_transition_legacy_pis CHECK (legacy_pis_cofins_factor BETWEEN 0 AND 1)
+    CONSTRAINT ck_transition_legacy_pis CHECK (legacy_pis_cofins_factor BETWEEN 0 AND 1),
+    CONSTRAINT ck_transition_jurisdiction CHECK (
+        (jurisdiction_scope = 'NATIONAL' AND uf IS NULL AND ibge_city_code IS NULL) OR
+        (jurisdiction_scope = 'STATE' AND uf IS NOT NULL AND ibge_city_code IS NULL) OR
+        (jurisdiction_scope = 'MUNICIPAL' AND uf IS NOT NULL AND ibge_city_code IS NOT NULL)
+    )
 );
 
 COMMENT ON TABLE tax_reform.transition_rates IS
@@ -466,6 +557,9 @@ COMMENT ON COLUMN tax_reform.transition_rates.transition_rate_id IS 'Identificad
 COMMENT ON COLUMN tax_reform.transition_rates.reference_year IS 'Ano de referência da alíquota (2026 a 2100).';
 COMMENT ON COLUMN tax_reform.transition_rates.tax_kind IS 'Tributo do novo modelo (IBS estadual, IBS municipal, CBS ou IS).';
 COMMENT ON COLUMN tax_reform.transition_rates.standard_rate IS 'Alíquota de referência do tributo no ano.';
+COMMENT ON COLUMN tax_reform.transition_rates.jurisdiction_scope IS 'Abrangência da alíquota: NATIONAL (referência), STATE (por UF) ou MUNICIPAL (por município).';
+COMMENT ON COLUMN tax_reform.transition_rates.uf IS 'UF do destino quando a alíquota é estadual/municipal (nulo quando nacional).';
+COMMENT ON COLUMN tax_reform.transition_rates.ibge_city_code IS 'Código IBGE do município quando a alíquota é municipal (nulo caso contrário).';
 COMMENT ON COLUMN tax_reform.transition_rates.legacy_icms_iss_factor IS
     'Fração do ICMS/ISS ainda devida no ano (1.0000 = integral; 0.0000 = extinto).';
 COMMENT ON COLUMN tax_reform.transition_rates.legacy_pis_cofins_factor IS
@@ -475,6 +569,71 @@ COMMENT ON COLUMN tax_reform.transition_rates.valid_from IS 'Data de início de 
 COMMENT ON COLUMN tax_reform.transition_rates.valid_to IS 'Data de fim de vigência da alíquota (nulo = vigente).';
 COMMENT ON COLUMN tax_reform.transition_rates.created_at IS 'Data de criação do registro.';
 COMMENT ON COLUMN tax_reform.transition_rates.updated_at IS 'Data da última alteração no registro.';
+
+-- 5.1. Incidência do Imposto Seletivo (IS) por produto.
+--      O IS é seletivo (ex.: cigarros, bebidas açucaradas) e pode ser ad valorem
+--      (percentual) ou específico (valor por unidade). Inicia em 2027.
+CREATE TABLE tax_reform.is_incidences (
+    -- Chaves
+    is_incidence_id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+
+    -- Alvo (por qual código o IS é localizado)
+    scope_type               tax_reform.rule_scope NOT NULL DEFAULT 'NCM',
+    target_code              VARCHAR(30) NOT NULL,
+    match_type               tax_reform.match_kind NOT NULL DEFAULT 'EXACT',
+
+    -- Dados obrigatórios
+    description              VARCHAR(500) NOT NULL,
+    rate_kind                tax_reform.is_rate_kind NOT NULL DEFAULT 'AD_VALOREM',
+
+    -- Alíquota conforme rate_kind
+    ad_valorem_rate          NUMERIC(15,4),   -- fração (0.1000 = 10%) quando AD_VALOREM
+    specific_amount          NUMERIC(15,4),   -- valor por unidade quando SPECIFIC
+    unit_of_measure          VARCHAR(10),     -- unidade base do valor específico (ex.: L, UN)
+
+    -- Ano de referência (opcional; IS pode variar por ano)
+    reference_year           SMALLINT,
+
+    -- Normativo
+    anexo_ref                VARCHAR(50),
+    legal_basis              TEXT,
+
+    -- Vigência
+    valid_from               DATE NOT NULL DEFAULT DATE '2027-01-01',
+    valid_to                 DATE,
+
+    -- Timestamps
+    created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    -- Constraints
+    CONSTRAINT ck_is_incidences_rate CHECK (
+        (rate_kind = 'AD_VALOREM' AND ad_valorem_rate IS NOT NULL AND ad_valorem_rate BETWEEN 0 AND 1) OR
+        (rate_kind = 'SPECIFIC' AND specific_amount IS NOT NULL AND specific_amount >= 0)
+    ),
+    CONSTRAINT ck_is_incidences_year CHECK (reference_year IS NULL OR reference_year BETWEEN 2027 AND 2100),
+    CONSTRAINT ck_is_incidences_validity CHECK (valid_to IS NULL OR valid_to >= valid_from)
+);
+
+COMMENT ON TABLE tax_reform.is_incidences IS
+    'Mapeia os produtos sujeitos ao Imposto Seletivo (IS) e a respectiva alíquota '
+    '(ad valorem ou específica). Sem registro correspondente, o IS do item é zero.';
+COMMENT ON COLUMN tax_reform.is_incidences.is_incidence_id IS 'Identificador interno da incidência de IS (BIGINT sequencial).';
+COMMENT ON COLUMN tax_reform.is_incidences.scope_type IS 'Tipo do código alvo (NCM, NBS, CEST, GTIN).';
+COMMENT ON COLUMN tax_reform.is_incidences.target_code IS 'Código que aciona o IS (valor do NCM/CEST/GTIN).';
+COMMENT ON COLUMN tax_reform.is_incidences.match_type IS 'Estratégia de correspondência: EXACT (exato) ou PREFIX (família de códigos).';
+COMMENT ON COLUMN tax_reform.is_incidences.description IS 'Descrição do produto/grupo sujeito ao IS.';
+COMMENT ON COLUMN tax_reform.is_incidences.rate_kind IS 'Forma de cobrança: AD_VALOREM (percentual) ou SPECIFIC (valor por unidade).';
+COMMENT ON COLUMN tax_reform.is_incidences.ad_valorem_rate IS 'Alíquota percentual do IS (fração) quando ad valorem.';
+COMMENT ON COLUMN tax_reform.is_incidences.specific_amount IS 'Valor do IS por unidade quando específico (ad rem).';
+COMMENT ON COLUMN tax_reform.is_incidences.unit_of_measure IS 'Unidade de medida base do valor específico (ex.: L, UN, MAÇO).';
+COMMENT ON COLUMN tax_reform.is_incidences.reference_year IS 'Ano de referência da alíquota do IS (nulo = vigente por prazo indeterminado).';
+COMMENT ON COLUMN tax_reform.is_incidences.anexo_ref IS 'Anexo/norma que originou a incidência do IS.';
+COMMENT ON COLUMN tax_reform.is_incidences.legal_basis IS 'Base legal da incidência do IS.';
+COMMENT ON COLUMN tax_reform.is_incidences.valid_from IS 'Data de início de vigência (IS inicia em 2027).';
+COMMENT ON COLUMN tax_reform.is_incidences.valid_to IS 'Data de fim de vigência (nulo = vigente).';
+COMMENT ON COLUMN tax_reform.is_incidences.created_at IS 'Data de criação do registro.';
+COMMENT ON COLUMN tax_reform.is_incidences.updated_at IS 'Data da última alteração no registro.';
 
 -- -----------------------------------------------------------------------------
 -- 6. SIMULAÇÕES (HISTÓRICO)
@@ -503,6 +662,9 @@ CREATE TABLE tax_reform.simulations (
     total_new_tax            NUMERIC(15,4) NOT NULL DEFAULT 0,
     total_difference         NUMERIC(15,4) NOT NULL DEFAULT 0,
     difference_percent       NUMERIC(15,4),
+
+    -- Diagnóstico (status FAILED)
+    error_reason             TEXT,
 
     -- Timestamps
     created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -537,6 +699,7 @@ COMMENT ON COLUMN tax_reform.simulations.total_old_tax IS 'Total de tributos no 
 COMMENT ON COLUMN tax_reform.simulations.total_new_tax IS 'Total de tributos no novo regime (IBS/CBS/IS).';
 COMMENT ON COLUMN tax_reform.simulations.total_difference IS 'Diferença total entre novo e antigo (negativo = redução de carga).';
 COMMENT ON COLUMN tax_reform.simulations.difference_percent IS 'Variação percentual da carga tributária (novo vs. antigo).';
+COMMENT ON COLUMN tax_reform.simulations.error_reason IS 'Motivo da falha quando status = FAILED (observabilidade).';
 COMMENT ON COLUMN tax_reform.simulations.created_at IS 'Data de criação do registro.';
 COMMENT ON COLUMN tax_reform.simulations.updated_at IS 'Data da última alteração no registro.';
 
@@ -560,8 +723,15 @@ CREATE TABLE tax_reform.simulation_items (
     class_trib_code          VARCHAR(6),
     applied_rule_id          UUID,
 
+    -- Rótulos do regime ATUAL lidos do XML (sem catálogo; apenas contexto/auditoria)
+    old_origem_cst           VARCHAR(4),   -- Origem+CST do ICMS (ex.: 000, 060 ST)
+    old_cst_pis              VARCHAR(2),
+    old_cst_cofins           VARCHAR(2),
+    old_csosn                VARCHAR(4),   -- Simples Nacional (ex.: 101, 500)
+
     -- Regime ANTIGO (valores de tributos)
     old_icms_value           NUMERIC(15,4) NOT NULL DEFAULT 0,
+    old_icms_st_value        NUMERIC(15,4) NOT NULL DEFAULT 0,
     old_pis_value            NUMERIC(15,4) NOT NULL DEFAULT 0,
     old_cofins_value         NUMERIC(15,4) NOT NULL DEFAULT 0,
     old_iss_value            NUMERIC(15,4) NOT NULL DEFAULT 0,
@@ -612,7 +782,12 @@ COMMENT ON COLUMN tax_reform.simulation_items.ncm_code IS 'Código NCM do item.'
 COMMENT ON COLUMN tax_reform.simulation_items.cst_code IS 'CST do IBS/CBS aplicado ao item (FK para tax_reform.cst).';
 COMMENT ON COLUMN tax_reform.simulation_items.class_trib_code IS 'Classificação cClassTrib aplicada (FK para tax_classifications).';
 COMMENT ON COLUMN tax_reform.simulation_items.applied_rule_id IS 'Regra/exceção aplicada ao item (FK para rules_and_exceptions).';
+COMMENT ON COLUMN tax_reform.simulation_items.old_origem_cst IS 'Origem + CST do ICMS lido do XML (ex.: 000, 060 ST). Rótulo, sem catálogo.';
+COMMENT ON COLUMN tax_reform.simulation_items.old_cst_pis IS 'CST do PIS lido do XML.';
+COMMENT ON COLUMN tax_reform.simulation_items.old_cst_cofins IS 'CST do COFINS lido do XML.';
+COMMENT ON COLUMN tax_reform.simulation_items.old_csosn IS 'CSOSN (Simples Nacional) lido do XML, quando aplicável.';
 COMMENT ON COLUMN tax_reform.simulation_items.old_icms_value IS 'Valor de ICMS no regime antigo.';
+COMMENT ON COLUMN tax_reform.simulation_items.old_icms_st_value IS 'Valor de ICMS-ST (substituição tributária) lido do XML; evita subestimar o "antes".';
 COMMENT ON COLUMN tax_reform.simulation_items.old_pis_value IS 'Valor de PIS no regime antigo.';
 COMMENT ON COLUMN tax_reform.simulation_items.old_cofins_value IS 'Valor de COFINS no regime antigo.';
 COMMENT ON COLUMN tax_reform.simulation_items.old_iss_value IS 'Valor de ISS no regime antigo.';
@@ -639,6 +814,13 @@ CREATE INDEX idx_tax_classifications_indicators ON tax_reform.tax_classification
 CREATE INDEX idx_ncms_code ON tax_reform.ncms (ncm_code);
 CREATE INDEX idx_ncms_code_prefix ON tax_reform.ncms (ncm_code text_pattern_ops); -- LIKE 'prefixo%'
 CREATE INDEX idx_ncms_fts ON tax_reform.ncms USING GIN (ncm_fts);
+CREATE INDEX idx_ncms_default_class_trib ON tax_reform.ncms (default_class_trib_code)
+    WHERE default_class_trib_code IS NOT NULL;
+
+-- NBS (busca de serviços)
+CREATE INDEX idx_nbs_code ON tax_reform.nbs (nbs_code);
+CREATE INDEX idx_nbs_lc116 ON tax_reform.nbs (lc116_item);
+CREATE INDEX idx_nbs_fts ON tax_reform.nbs USING GIN (nbs_fts);
 
 -- Produtos (busca por código de barras)
 CREATE INDEX idx_products_ref_gtin ON tax_reform.products_ref (gtin);
@@ -649,11 +831,22 @@ CREATE INDEX idx_products_ref_fts ON tax_reform.products_ref USING GIN (product_
 -- Regras e alvos
 CREATE INDEX idx_rules_scope ON tax_reform.rules_and_exceptions (scope_type);
 CREATE INDEX idx_rules_conditions ON tax_reform.rules_and_exceptions USING GIN (conditions);
+CREATE INDEX idx_rules_class_trib ON tax_reform.rules_and_exceptions (class_trib_code);
+CREATE INDEX idx_rules_tax_class ON tax_reform.rules_and_exceptions (tax_class_id);
 CREATE INDEX idx_rule_targets_lookup ON tax_reform.rule_targets (target_scope, target_code);
 CREATE INDEX idx_rule_targets_rule ON tax_reform.rule_targets (rule_id);
 
+-- Imposto Seletivo (IS)
+CREATE INDEX idx_is_incidences_lookup ON tax_reform.is_incidences (scope_type, target_code);
+
 -- Transição
 CREATE INDEX idx_transition_rates_year ON tax_reform.transition_rates (reference_year);
+CREATE UNIQUE INDEX uk_transition_rates ON tax_reform.transition_rates (
+    reference_year, tax_kind, jurisdiction_scope,
+    COALESCE(uf, ''), COALESCE(ibge_city_code, '')
+);
+CREATE INDEX idx_transition_rates_uf ON tax_reform.transition_rates (uf)
+    WHERE uf IS NOT NULL;
 
 -- Simulações
 CREATE INDEX idx_simulations_est ON tax_reform.simulations (est_id);
@@ -686,6 +879,10 @@ CREATE TRIGGER tr_upd_transition_rates
     BEFORE UPDATE ON tax_reform.transition_rates
     FOR EACH ROW EXECUTE FUNCTION public.fn_update_timestamp();
 
+CREATE TRIGGER tr_upd_is_incidences
+    BEFORE UPDATE ON tax_reform.is_incidences
+    FOR EACH ROW EXECUTE FUNCTION public.fn_update_timestamp();
+
 CREATE TRIGGER tr_upd_simulations
     BEFORE UPDATE ON tax_reform.simulations
     FOR EACH ROW EXECUTE FUNCTION public.fn_update_timestamp();
@@ -705,4 +902,12 @@ CREATE TRIGGER tr_fts_products_ref
 
 CREATE TRIGGER tr_upd_products_ref
     BEFORE UPDATE ON tax_reform.products_ref
+    FOR EACH ROW EXECUTE FUNCTION public.fn_update_timestamp();
+
+CREATE TRIGGER tr_fts_nbs
+    BEFORE INSERT OR UPDATE OF nbs_code, nbs_description ON tax_reform.nbs
+    FOR EACH ROW EXECUTE FUNCTION tax_reform.fn_refresh_nbs_fts();
+
+CREATE TRIGGER tr_upd_nbs
+    BEFORE UPDATE ON tax_reform.nbs
     FOR EACH ROW EXECUTE FUNCTION public.fn_update_timestamp();

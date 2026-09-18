@@ -71,7 +71,7 @@ Ou seja: **nada foi inventado**. Cada regra do sistema tem origem rastreável em
 
 ## 4. As "gavetas" de informação (organização dos dados)
 
-O sistema organiza a informação em cinco grandes grupos. Pense em cada grupo como um conjunto de gavetas de um arquivo tributário:
+O sistema organiza a informação em seis grandes grupos. Pense em cada grupo como um conjunto de gavetas de um arquivo tributário:
 
 ### Gaveta 1 — Referência Tributária (o "dicionário fiscal")
 - **Situações Tributárias (CST):** a lista dos códigos de situação (integral, reduzida, isenta, diferida, monofásica...).
@@ -83,6 +83,7 @@ O sistema organiza a informação em cinco grandes grupos. Pense em cada grupo c
 ### Gaveta 2 — Catálogos de Busca
 - **NCM:** catálogo de mercadorias para encontrar o produto.
 - **Produtos (código de barras):** liga o código de barras (EAN/GTIN) à NCM e à classificação padrão, para busca instantânea no PDV/estoque.
+- **Serviços (NBS):** catálogo de serviços ligado à Lista de Serviços (LC 116), para quando o simulador também tratar notas de serviço (etapa posterior).
 
 ### Gaveta 3 — Regras e Exceções (os Anexos da LC 214)
 - **Regras:** cada benefício vira uma regra (cesta básica, saúde, educação, medicamentos, insumos...).
@@ -94,6 +95,10 @@ O sistema organiza a informação em cinco grandes grupos. Pense em cada grupo c
 ### Gaveta 5 — Histórico de Simulações
 - **Cabeçalho da simulação:** quem simulou, quando, para qual ano, e os totais.
 - **Itens da simulação:** o detalhe item a item, com os impostos antigos e novos lado a lado. **Cada simulação é congelada e guardada**, para que possa ser auditada mesmo que as alíquotas mudem no futuro.
+
+### Gaveta 6 — Imposto Seletivo (o "imposto do pecado")
+- Alguns produtos (por exemplo, cigarros e bebidas açucaradas) terão um imposto extra chamado **Imposto Seletivo (IS)**, que começa em 2027.
+- Esta gaveta guarda **quais produtos** pagam esse imposto e **quanto** — seja em percentual, seja em valor fixo por unidade (por exemplo, por litro). Se o produto não está nesta lista, o IS é zero.
 
 ---
 
@@ -138,6 +143,7 @@ O mesmo raciocínio vale para saúde e educação (redução de 60%), medicament
 - **Atualização sem retrabalho:** alíquotas e benefícios ficam em tabelas próprias. Quando sair nova regulamentação, atualiza-se apenas o cadastro, sem reprogramar o sistema.
 - **Fidelidade às fontes oficiais:** toda regra aponta para o Anexo e o artigo da LC 214/2025 que a originou.
 - **Cobertura de bens e serviços:** o modelo trata tanto mercadorias (via NCM/código de barras) quanto serviços (via lista de serviços da LC 116 e NBS).
+- **Leitura fiel do "antes":** o simulador respeita situações especiais da nota atual — como produtos com **Substituição Tributária (ST)**, isentos ou monofásicos — para não subestimar o imposto que já era pago hoje e evitar comparações distorcidas.
 
 ---
 
@@ -155,7 +161,9 @@ Alguns nomes internos do sistema estão em inglês por padrão de programação.
 | `products_ref` | Catálogo de produtos por código de barras (EAN/GTIN) |
 | `rules_and_exceptions` | Regras e exceções dos Anexos da LC 214 |
 | `rule_targets` | Códigos (NCM/NBS/CEST...) que acionam cada regra |
-| `transition_rates` | Alíquotas por ano (calendário da transição) |
+| `is_incidences` | Produtos sujeitos ao Imposto Seletivo (IS) e a alíquota aplicável |
+| `nbs` | Catálogo de serviços (Nomenclatura Brasileira de Serviços) |
+| `transition_rates` | Alíquotas por ano (calendário da transição), por âmbito nacional/UF/município |
 | `simulations` | Cabeçalho de cada simulação realizada |
 | `simulation_items` | Detalhe item a item (comparativo Antes × Depois) |
 | `old_...` (ex.: `old_icms_value`) | Valores do **modelo antigo** (ICMS, PIS, COFINS, ISS) |
